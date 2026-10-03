@@ -18,7 +18,8 @@ export async function getStreak(userId: string, lookbackDays = 60): Promise<numb
 
   if (error) throw error;
 
-  const daysWithCompletion = new Set((data ?? []).map((t) => t.scheduled_date));
+  const rows = (data ?? []) as unknown as { scheduled_date: string; status: string }[];
+  const daysWithCompletion = new Set(rows.map((t) => t.scheduled_date));
 
   let streak = 0;
   let cursor = new Date();
