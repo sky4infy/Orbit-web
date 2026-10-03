@@ -2,15 +2,46 @@
 // Once live, regenerate with:
 //   npx supabase gen types typescript --project-id <id> > src/types/database.types.ts
 
+export type TrackType = 'jee_nsep' | 'college_cs_aiml' | 'all';
 export type TimeSlot = 'morning' | 'afternoon' | 'evening' | 'night';
 export type EffortLevel = 'low' | 'medium' | 'high';
 export type TaskStatus = 'pending' | 'completed' | 'skipped' | 'moved';
 export type IncompleteReason =
   | 'too_difficult' | 'distraction' | 'ran_out_of_time'
   | 'coaching_overran' | 'illness' | 'bad_planning';
-export type MistakeType = 'conceptual' | 'calculation' | 'silly' | 'time_pressure' | 'misread_question';
+export type MistakeType =
+  | 'conceptual' | 'calculation' | 'silly' | 'time_pressure' | 'misread_question'
+  | 'tle' | 'corner_case' | 'logic_flaw' | 'memory_oom';
 export type Difficulty = 'easy' | 'medium' | 'hard';
+export type ExamType =
+  | 'jee_main' | 'jee_advanced' | 'nsep' | 'iiser' | 'coaching_test' | 'school_test'
+  | 'college_contest' | 'hackathon' | 'midsem' | 'other';
 export type ChapterStatus = 'not_started' | 'learning' | 'practicing' | 'revision_due' | 'mastered' | 'locked';
+
+export interface Exam {
+  id: string;
+  user_id: string;
+  name: string;
+  exam_type: ExamType;
+  exam_date: string;
+  created_at: string;
+}
+
+export interface ExamChapter {
+  exam_id: string;
+  chapter_id: string;
+}
+
+/** Row shape of the `my_exam_readiness` view. */
+export interface ExamReadinessRow {
+  exam_id: string;
+  name: string;
+  exam_type: ExamType;
+  exam_date: string;
+  total_chapters: number;
+  mastered_chapters: number;
+  avg_confidence: number;
+}
 export type EventType =
   | 'task_created' | 'task_completed' | 'task_skipped' | 'task_moved'
   | 'mistake_logged' | 'revision_completed' | 'reflection_submitted' | 'study_session_ended'
@@ -25,6 +56,7 @@ export interface Profile {
 export interface Subject {
   id: string;
   name: string;
+  track?: string;
   created_at: string;
 }
 
@@ -51,6 +83,7 @@ export interface ChapterStatusRow {
   chapter_name: string;
   subject_id: string;
   subject_name: string;
+  track?: string;
   status: ChapterStatus;
   confidence_score: number;
   notes: string | null;
@@ -62,6 +95,7 @@ export interface ChapterStatusRow {
 export interface SubjectProgressRow {
   subject_id: string;
   subject_name: string;
+  track?: string;
   total_chapters: number;
   mastered_count: number;
   revision_due_count: number;
@@ -155,6 +189,16 @@ export interface Database {
       revision: { Row: Revision; Insert: Partial<Revision>; Update: Partial<Revision> };
       reflection: { Row: Reflection; Insert: Partial<Reflection>; Update: Partial<Reflection> };
       event_log: { Row: EventLog; Insert: Partial<EventLog>; Update: Partial<EventLog> };
+      exam: { Row: Exam; Insert: Partial<Exam>; Update: Partial<Exam> };
+      exam_chapter: { Row: ExamChapter; Insert: Partial<ExamChapter>; Update: Partial<ExamChapter> };
     };
+    Views: {
+      my_chapter_status: { Row: ChapterStatusRow };
+      my_subject_progress: { Row: SubjectProgressRow };
+      my_exam_readiness: { Row: ExamReadinessRow };
+    };
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }
