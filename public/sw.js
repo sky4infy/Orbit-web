@@ -1,28 +1,19 @@
-// Minimal service worker — just enough to make the app installable as a PWA
-// and to work offline for the app shell. Not caching API/Supabase responses
-// on purpose: study data must always be fresh, never served stale from cache.
-const CACHE_NAME = 'orbit-shell-v1';
-const SHELL_ASSETS = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+// Orbit — minimal service worker.
+//
+// Deliberately does NOT cache API calls or app pages. Orbit's data changes
+// constantly (tasks, mistakes, revisions) and is per-user via Supabase auth,
+// so a stale-while-revalidate or cache-first strategy here would risk
+// showing one user's cached data to another on a shared device, or just
+// showing stale plans. This worker exists only so the app satisfies PWA
+// installability criteria (Chrome/Android "Add to Home Screen", iOS Safari
+// "Add to Home Screen") — everything still goes to the network.
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS))
-  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
+  event.waitUntil(self.clients.claim());
 });
 
-// Network-first for everything — falls back to cache only if offline.
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
-  );
-});
+// No fetch handler — all requests fall through to the network untouched.
