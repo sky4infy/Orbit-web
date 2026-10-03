@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Sora, Manrope, IBM_Plex_Mono } from 'next/font/google';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { BottomNav } from '@/components/BottomNav';
+import { AuthProvider } from '@/lib/supabase/AuthProvider';
 import './globals.css';
 
 const sora = Sora({ subsets: ['latin'], variable: '--font-sora', weight: ['500', '600'] });
@@ -26,9 +27,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${sora.variable} ${manrope.variable} ${mono.variable}`}>
       <body>
-        <ServiceWorkerRegister />
-        {children}
-        <BottomNav />
+        <AuthProvider>
+          <ServiceWorkerRegister />
+          {children}
+          <BottomNav />
+        </AuthProvider>
       </body>
     </html>
   );
