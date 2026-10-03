@@ -3,38 +3,85 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
+import type { TrackType } from '@/types/database.types';
 
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [focusTrack, setFocusTrack] = useState<TrackType>('jee_nsep');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [resendVisible, setResendVisible] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
+    setResendVisible(false);
     setLoading(true);
     try {
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { data: { display_name: displayName || email.split('@')[0] } },
         });
         if (error) throw error;
+
+        if (data.session) {
+          // Email confirmation is off for this project — signUp already
+          // logged them in, safe to go straight in.
+          router.push('/planner');
+          router.refresh();
+        } else {
+          // Most Supabase projects have "Confirm email" on by default.
+          // signUp() still succeeds and creates the user, but returns no
+          // session until they click the link in their inbox. Redirecting
+          // to a protected page here would just get silently bounced back
+          // to /login by middleware with zero explanation — so instead,
+          // tell them plainly what to do next.
+          setNotice(
+            `Account created for ${email}. Check your inbox for a confirmation link, then log in below. ` +
+              `(If you don't see it in a minute, check spam — or your Supabase project may have email confirmation off, in which case try logging in now.)`
+          );
+          setMode('login');
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        router.push('/planner');
+        router.refresh();
       }
-      router.push('/planner');
-      router.refresh();
     } catch (e: any) {
-      setError(e.message ?? 'Something went wrong');
+      const message: string = e?.message ?? 'Something went wrong';
+      if (/email not confirmed/i.test(message)) {
+        setError("This email hasn't been confirmed yet — check your inbox for the confirmation link.");
+        setResendVisible(true);
+      } else if (/invalid login credentials/i.test(message)) {
+        setError(
+          "Email or password doesn't match an account. If you just signed up, make sure you confirmed your email first — or double check you're using the right password."
+        );
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function resendConfirmation() {
+    setResendStatus(null);
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email });
+      if (error) throw error;
+      setResendStatus('Confirmation email resent — check your inbox.');
+    } catch (e: any) {
+      setResendStatus(e?.message ?? 'Could not resend right now.');
     }
   }
 
@@ -51,12 +98,52 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {mode === 'signup' && (
-            <input
-              className="rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 text-sm outline-none placeholder:text-paper/30"
-              placeholder="Your name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
+            <>
+              <input
+                className="rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 text-sm outline-none placeholder:text-paper/30"
+                placeholder="Your name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+              />
+              <div className="rounded-xl2 border border-white/5 bg-ink-100/50 p-3">
+                <label className="text-[11px] font-medium uppercase tracking-wider text-paper/40 mb-2 block">
+                  Select Your Primary Academic Focus
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFocusTrack('jee_nsep');
+                      localStorage.setItem('orbit_active_track', 'jee_nsep');
+                    }}
+                    className={`rounded-xl p-2.5 text-left transition ${
+                      focusTrack === 'jee_nsep'
+                        ? 'border border-amber bg-amber/15 text-paper'
+                        : 'border border-white/5 bg-white/5 text-paper/60 hover:bg-white/10'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold">STEM & Olympiad</p>
+                    <p className="text-[10px] text-paper/40 mt-0.5">JEE Main • Adv • NSEP</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFocusTrack('college_cs_aiml');
+                      localStorage.setItem('orbit_active_track', 'college_cs_aiml');
+                    }}
+                    className={`rounded-xl p-2.5 text-left transition ${
+                      focusTrack === 'college_cs_aiml'
+                        ? 'border border-subject-physics bg-subject-physics/15 text-paper'
+                        : 'border border-white/5 bg-white/5 text-paper/60 hover:bg-white/10'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold">CS & AI</p>
+                    <p className="text-[10px] text-paper/40 mt-0.5">DSA • AI/ML • Systems</p>
+                  </button>
+                </div>
+              </div>
+            </>
           )}
           <input
             className="rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 text-sm outline-none placeholder:text-paper/30"
@@ -74,7 +161,25 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          {error && <p className="text-sm text-rust">{error}</p>}
+          {notice && (
+            <p className="rounded-xl2 border border-amber/30 bg-amber/10 p-3 text-xs text-amber">{notice}</p>
+          )}
+
+          {error && (
+            <div>
+              <p className="text-sm text-rust">{error}</p>
+              {resendVisible && (
+                <button
+                  type="button"
+                  onClick={resendConfirmation}
+                  className="mt-1 text-xs text-paper/50 underline hover:text-paper/80"
+                >
+                  Resend confirmation email
+                </button>
+              )}
+              {resendStatus && <p className="mt-1 text-xs text-paper/40">{resendStatus}</p>}
+            </div>
+          )}
 
           <button
             type="submit"
@@ -91,6 +196,58 @@ export default function LoginPage() {
         >
           {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
         </button>
+
+        {/* 1-Click Sandbox / Demo Launcher */}
+        <div className="mt-8 border-t border-white/5 pt-6 text-center">
+          <div className="mb-3 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setFocusTrack('jee_nsep');
+                localStorage.setItem('orbit_active_track', 'jee_nsep');
+              }}
+              className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                focusTrack === 'jee_nsep'
+                  ? 'bg-amber text-ink font-semibold'
+                  : 'bg-white/5 text-paper/60 hover:bg-white/10'
+              }`}
+            >
+              STEM & Olympiad
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFocusTrack('college_cs_aiml');
+                localStorage.setItem('orbit_active_track', 'college_cs_aiml');
+              }}
+              className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                focusTrack === 'college_cs_aiml'
+                  ? 'bg-subject-physics text-ink font-semibold'
+                  : 'bg-white/5 text-paper/60 hover:bg-white/10'
+              }`}
+            >
+              CS & AI
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              document.cookie = 'orbit_demo=true; path=/; max-age=2592000';
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('orbit_demo', 'true');
+                localStorage.setItem('orbit_active_track', focusTrack);
+              }
+              window.location.href = '/planner';
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber/30 bg-amber/10 py-3 text-xs font-semibold text-amber transition hover:bg-amber/20"
+          >
+            <span>⚡ Launch Interactive Demo</span>
+          </button>
+          <p className="mt-2 text-[11px] text-paper/40">
+            Preview the full learning OS without credentials.
+          </p>
+        </div>
       </div>
     </main>
   );
