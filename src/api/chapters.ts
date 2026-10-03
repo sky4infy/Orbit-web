@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/client';
-import type { ChapterStatus } from '@/types/database.types';
+import type { ChapterStatus, ChapterStatusRow } from '@/types/database.types';
 
 export interface ChapterOverview {
   id: string;
@@ -22,7 +22,7 @@ export async function getChaptersOverview(): Promise<ChapterOverview[]> {
   const { data, error } = await supabase.from('my_chapter_status').select('*');
   if (error) throw error;
 
-  return (data ?? []).map((row) => ({
+  return ((data ?? []) as unknown as ChapterStatusRow[]).map((row) => ({
     id: row.chapter_id,
     name: row.chapter_name,
     subjectId: row.subject_id,
