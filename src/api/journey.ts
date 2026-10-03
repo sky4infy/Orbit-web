@@ -9,7 +9,7 @@ export async function getSubjectProgress(): Promise<SubjectProgressRow[]> {
     .select('*')
     .order('subject_name', { ascending: true });
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as unknown as SubjectProgressRow[];
 }
 
 /** One query. Already joined with subject name and unresolved mistake count. */
@@ -20,13 +20,13 @@ export async function getChaptersForSubject(subjectId: string): Promise<ChapterS
     .eq('subject_id', subjectId)
     .order('chapter_name', { ascending: true });
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as unknown as ChapterStatusRow[];
 }
 
 export async function getChapterStatusRow(chapterId: string): Promise<ChapterStatusRow | null> {
   const { data, error } = await supabase.from('my_chapter_status').select('*').eq('chapter_id', chapterId).single();
   if (error) return null;
-  return data;
+  return data as unknown as ChapterStatusRow;
 }
 
 /**
@@ -78,10 +78,20 @@ export async function getChapterDetail(userId: string, chapterId: string) {
 
   return {
     status: statusRow,
-    mistakes: mistakesRes.data ?? [],
-    revision: revisionRes.data,
-    todayEvents: todayEventsRes.data ?? [],
-    recentTasks: recentTasksRes.data ?? [],
+    mistakes: (mistakesRes.data ?? []) as unknown as {
+      id: string; mistake_type: string; difficulty: string; description: string | null;
+      resolved: boolean; created_at: string;
+    }[],
+    revision: revisionRes.data as unknown as {
+      id: string; due_date: string; interval_days: number;
+      review_count: number; success_count: number; failure_count: number; last_reviewed_at: string | null;
+    } | null,
+    todayEvents: (todayEventsRes.data ?? []) as unknown as {
+      event_type: string; metadata: Record<string, unknown>; created_at: string;
+    }[],
+    recentTasks: (recentTasksRes.data ?? []) as unknown as {
+      id: string; title: string; status: string; scheduled_date: string;
+    }[],
   };
 }
 
@@ -98,7 +108,7 @@ export async function upsertChapterProgress(
   const { data, error } = await supabase
     .from('user_chapter_progress')
     .upsert(
-      { user_id: userId, chapter_id: chapterId, ...updates },
+      { user_id: userId, chapter_id: chapterId, ...updates } as never,
       { onConflict: 'user_id,chapter_id' }
     )
     .select()
