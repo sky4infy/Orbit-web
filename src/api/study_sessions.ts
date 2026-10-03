@@ -1,24 +1,26 @@
 import { supabase } from '@/lib/supabase/client';
 import { logEvent } from '@/api/events';
+import type { StudySession } from '@/types/database.types';
 
 export async function startStudySession(userId: string, taskId: string | null) {
   const { data, error } = await supabase
     .from('study_session')
-    .insert({ user_id: userId, task_id: taskId, start_time: new Date().toISOString() })
+    .insert({ user_id: userId, task_id: taskId, start_time: new Date().toISOString() } as never)
     .select()
     .single();
   if (error) throw error;
-  return data;
+  return data as unknown as StudySession;
 }
 
 export async function endStudySession(userId: string, sessionId: string, pausedSeconds = 0) {
-  const { data, error } = await supabase
+  const { data: rawData, error } = await supabase
     .from('study_session')
-    .update({ end_time: new Date().toISOString(), paused_seconds: pausedSeconds })
+    .update({ end_time: new Date().toISOString(), paused_seconds: pausedSeconds } as never)
     .eq('id', sessionId)
     .select()
     .single();
   if (error) throw error;
+  const data = rawData as unknown as StudySession;
 
   const durationMinutes = data.end_time
     ? Math.round((new Date(data.end_time).getTime() - new Date(data.start_time).getTime()) / 60000)
@@ -42,11 +44,12 @@ export async function getAverageSessionLength(userId: string, sinceDate: string)
     .not('end_time', 'is', null);
 
   if (error) throw error;
-  if (data.length === 0) return null;
+  const rows = (data ?? []) as unknown as { start_time: string; end_time: string | null }[];
+  if (rows.length === 0) return null;
 
-  const totalMinutes = data.reduce((sum, s) => {
+  const totalMinutes = rows.reduce((sum, s) => {
     return sum + (new Date(s.end_time!).getTime() - new Date(s.start_time).getTime()) / 60000;
   }, 0);
 
-  return Math.round(totalMinutes / data.length);
+  return Math.round(totalMinutes / rows.length);
 }
