@@ -13,16 +13,16 @@ export function StreakAndLevel({ streak, level }: Props) {
 
   return (
     <div className="flex items-center gap-4 rounded-xl2 border border-white/5 bg-ink-50 px-4 py-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         <motion.span
           key={streak}
-          initial={{ scale: 0.7 }}
-          animate={{ scale: 1 }}
-          className="font-display text-2xl font-medium text-amber"
+          initial={{ scale: 0.7, opacity: 0.4 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="font-mono text-2xl font-medium tabular-nums text-amber"
         >
           {streak}
         </motion.span>
-        <div className="text-xs leading-tight text-paper/50">
+        <div className="font-mono text-[10px] uppercase leading-tight tracking-wide text-paper/40">
           day
           <br />
           streak
@@ -34,7 +34,7 @@ export function StreakAndLevel({ streak, level }: Props) {
       <div className="flex-1">
         <div className="flex items-center justify-between text-xs">
           <span className="font-semibold text-paper/80">Level {level.level}</span>
-          <span className="font-mono text-[10px] text-paper/40">
+          <span className="font-mono text-[10px] tabular-nums text-paper/40">
             {level.xpIntoLevel}/{level.xpForNextLevel} XP
           </span>
         </div>
