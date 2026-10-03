@@ -16,7 +16,7 @@ export async function logEvent(
   metadata: Record<string, unknown> = {}
 ) {
   try {
-    await supabase.from('event_log').insert({ user_id: userId, event_type: eventType, metadata });
+    await supabase.from('event_log').insert({ user_id: userId, event_type: eventType, metadata } as never);
   } catch {
     // intentionally silent — logging must never break the primary action
   }
