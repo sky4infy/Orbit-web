@@ -16,6 +16,11 @@ const SUBJECT_COLORS: Record<string, string> = {
   Maths: '#E0AE4F',
   Mathematics: '#E0AE4F',
   Biology: '#D983A6',
+  'Data Structures & Algorithms': '#38BDF8',
+  'AI & Machine Learning': '#A855F7',
+  'Web Dev & Systems': '#10B981',
+  'Web Development & Systems': '#10B981',
+  'Core Computer Science': '#F97316',
 };
 
 function colorForSubject(name: string): string {
@@ -91,8 +96,16 @@ export function OrbitMasteryMap({ chapters }: Props) {
         })}
 
         {/* center — "you" */}
-        <circle cx={center} cy={center} r={6} fill="#F6F3EC" />
-        <circle cx={center} cy={center} r={10} fill="none" stroke="#F6F3EC" strokeOpacity={0.3} />
+        <circle cx={center} cy={center} r={6} fill="currentColor" className="fill-paper" />
+        <circle
+          cx={center}
+          cy={center}
+          r={10}
+          fill="none"
+          stroke="currentColor"
+          className="text-paper"
+          strokeOpacity={0.3}
+        />
 
         {positioned.map((c) => {
           const dotSize = 5 + Math.min(c.unresolvedMistakes, 6) * 1.6;
