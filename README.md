@@ -6,10 +6,9 @@
 ---
 
 ## 📚 Official User Guide
-Complete tab-by-tab walkthrough and executive manual available in multiple formats:
+Complete tab-by-tab walkthrough and executive manual:
 * 📄 **[Download Official Master PDF (`orbit_guide.pdf`)](./orbit_guide.pdf)** — Publication-grade 5-page A4 executive manual.
 * 📝 **[Read Markdown Guide (`orbit_guide.md`)](./orbit_guide.md)** — Clean GitHub-native documentation.
-* 🌐 **[View Printable HTML (`orbit_guide.html`)](./orbit_guide.html)** — Formatted with CSS print styling.
 
 ---
 
