@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { OrbitLogo } from '@/components/OrbitLogo';
@@ -20,41 +20,6 @@ export default function LoginPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [resendVisible, setResendVisible] = useState(false);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('error')) {
-        setError('Google sign-in could not be completed. Please ensure Google provider is enabled in Supabase.');
-      }
-    }
-  }, []);
-
-  async function handleGoogleSignIn() {
-    setError(null);
-    setNotice(null);
-    setResendVisible(false);
-
-    if (!isSupabaseConfigured) {
-      setError("Authentication service temporarily unavailable. Please try again shortly.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      localStorage.setItem('orbit_active_track', focusTrack);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?track=${focusTrack}`,
-        },
-      });
-      if (error) throw error;
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to initialize Google sign-in.');
-      setLoading(false);
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -88,7 +53,7 @@ export default function LoginPage() {
           router.push('/planner');
           router.refresh();
         } else {
-          setNotice(`Verification email sent to ${email}. Please check your inbox.`);
+          setNotice(`Verification email sent to ${email}. Please check your inbox or spam folder to activate your account.`);
           setMode('login');
         }
       } else {
@@ -142,88 +107,73 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Academic Track selection for signup */}
-        {mode === 'signup' && (
-          <div className="rounded-xl2 border border-white/5 bg-ink-100/50 p-3 mb-4">
-            <label className="text-[11px] font-medium uppercase tracking-wider text-paper/40 mb-2 block">
-              Select Your Primary Academic Focus
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setFocusTrack('jee_nsep');
-                  localStorage.setItem('orbit_active_track', 'jee_nsep');
-                }}
-                className={`rounded-xl p-2.5 text-left transition ${
-                  focusTrack === 'jee_nsep'
-                    ? 'border border-amber bg-amber/15 text-paper'
-                    : 'border border-white/5 bg-white/5 text-paper/60 hover:bg-white/10'
-                }`}
-              >
-                <p className="text-xs font-semibold">STEM & Olympiad</p>
-                <p className="text-[10px] text-paper/40 mt-0.5">JEE Main • Adv • NSEP</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setFocusTrack('college_cs_aiml');
-                  localStorage.setItem('orbit_active_track', 'college_cs_aiml');
-                }}
-                className={`rounded-xl p-2.5 text-left transition ${
-                  focusTrack === 'college_cs_aiml'
-                    ? 'border border-amber bg-amber/15 text-paper'
-                    : 'border border-white/5 bg-white/5 text-paper/60 hover:bg-white/10'
-                }`}
-              >
-                <p className="text-xs font-semibold">CS & AI</p>
-                <p className="text-[10px] text-paper/40 mt-0.5">DSA • AI/ML • Systems</p>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 1-Click Google OAuth */}
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          disabled={loading}
-          className="mb-4 flex w-full items-center justify-center gap-3 rounded-xl border border-white/15 bg-white/5 py-3 text-sm font-semibold text-paper shadow-sm transition hover:bg-white/10 hover:border-white/25 active:scale-[0.99] disabled:opacity-50"
-        >
-          <GoogleIcon />
-          <span>Continue with Google</span>
-        </button>
-
-        <div className="relative mb-4 flex items-center justify-center">
-          <div className="w-full border-t border-white/10" />
-          <span className="absolute bg-ink px-3 text-[11px] font-medium uppercase tracking-wider text-paper/40">
-            or with email
-          </span>
-        </div>
-
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {mode === 'signup' && (
-            <input
-              className="rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 text-sm outline-none placeholder:text-paper/30"
-              placeholder="Your name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
+            <>
+              <input
+                className="rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 text-sm outline-none placeholder:text-paper/30"
+                placeholder="Your name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+              />
+              <div className="rounded-xl2 border border-white/5 bg-ink-100/50 p-3">
+                <label className="text-[11px] font-medium uppercase tracking-wider text-paper/40 mb-2 block">
+                  Select Your Primary Academic Focus
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFocusTrack('jee_nsep');
+                      localStorage.setItem('orbit_active_track', 'jee_nsep');
+                    }}
+                    className={`rounded-xl p-2.5 text-left transition ${
+                      focusTrack === 'jee_nsep'
+                        ? 'border border-amber bg-amber/15 text-paper'
+                        : 'border border-white/5 bg-white/5 text-paper/60 hover:bg-white/10'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold">STEM & Olympiad</p>
+                    <p className="text-[10px] text-paper/40 mt-0.5">JEE Main • Adv • NSEP</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFocusTrack('college_cs_aiml');
+                      localStorage.setItem('orbit_active_track', 'college_cs_aiml');
+                    }}
+                    className={`rounded-xl p-2.5 text-left transition ${
+                      focusTrack === 'college_cs_aiml'
+                        ? 'border border-amber bg-amber/15 text-paper'
+                        : 'border border-white/5 bg-white/5 text-paper/60 hover:bg-white/10'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold">CS & AI</p>
+                    <p className="text-[10px] text-paper/40 mt-0.5">DSA • AI/ML • Systems</p>
+                  </button>
+                </div>
+              </div>
+            </>
           )}
+
           <input
             className="rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 text-sm outline-none placeholder:text-paper/30"
             placeholder="Email"
             type="email"
+            required
             autoCapitalize="none"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
+
           <div className="relative">
             <input
               className="w-full rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 pr-11 text-sm outline-none placeholder:text-paper/30 transition focus:border-amber/50"
               placeholder="Password"
               type={showPassword ? 'text' : 'password'}
+              required
+              minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
@@ -279,28 +229,5 @@ export default function LoginPage() {
         </button>
       </div>
     </main>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" className="shrink-0">
-      <path
-        fill="#4285F4"
-        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-      />
-    </svg>
   );
 }
