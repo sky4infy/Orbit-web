@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import type { TrackType } from '@/types/database.types';
 
 export default function LoginPage() {
@@ -23,6 +23,14 @@ export default function LoginPage() {
     setError(null);
     setNotice(null);
     setResendVisible(false);
+
+    if (!isSupabaseConfigured) {
+      setError(
+        "Supabase credentials are not configured in Vercel. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your Vercel Environment Variables and redeploy — or launch the Interactive Demo below."
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       if (mode === 'signup') {
@@ -59,7 +67,11 @@ export default function LoginPage() {
       }
     } catch (e: any) {
       const message: string = e?.message ?? 'Something went wrong';
-      if (/email not confirmed/i.test(message)) {
+      if (/failed to fetch/i.test(message)) {
+        setError(
+          "Could not reach database (Failed to fetch). If you are running on Vercel, ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Project Settings and redeployed."
+        );
+      } else if (/email not confirmed/i.test(message)) {
         setError("This email hasn't been confirmed yet — check your inbox for the confirmation link.");
         setResendVisible(true);
       } else if (/invalid login credentials/i.test(message)) {
@@ -95,6 +107,20 @@ export default function LoginPage() {
             {mode === 'login' ? 'Welcome back.' : 'Create your account.'}
           </p>
         </div>
+
+        {!isSupabaseConfigured && (
+          <div className="mb-4 rounded-2xl border border-amber/30 bg-amber/10 p-3.5 text-xs text-amber leading-relaxed">
+            <p className="font-semibold text-amber mb-1 flex items-center gap-1.5">
+              <span>⚠️</span> Supabase Not Linked in Vercel
+            </p>
+            <p className="text-paper/70">
+              Add <code className="text-amber bg-white/5 px-1 py-0.5 rounded">NEXT_PUBLIC_SUPABASE_URL</code> and <code className="text-amber bg-white/5 px-1 py-0.5 rounded">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to your Vercel Project Settings and redeploy.
+            </p>
+            <p className="mt-2 text-paper/80 font-medium">
+              You can test immediately with <strong>Launch Interactive Demo</strong> below!
+            </p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {mode === 'signup' && (
