@@ -290,6 +290,81 @@ export async function deleteLocalExam(examId: string) {
 }
 
 // ============================================================
+// LOCAL REFLECTION METHODS (Local-First Cognitive State)
+// ============================================================
+
+export async function getLocalReflectionForDay(userId: string, day: string): Promise<LocalReflection | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const list = await db.reflections.where('day').equals(day).toArray();
+    return list.find((r) => r.user_id === userId || !r.user_id) || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getRecentLocalReflections(userId: string, limit = 7): Promise<LocalReflection[]> {
+  if (typeof window === 'undefined') return [];
+  try {
+    const list = await db.reflections.toArray();
+    return list
+      .filter((r) => r.user_id === userId || !r.user_id)
+      .sort((a, b) => b.day.localeCompare(a.day))
+      .slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveLocalReflection(reflection: LocalReflection) {
+  if (typeof window === 'undefined') return;
+  await db.reflections.put(reflection);
+}
+
+// ============================================================
+// LOCAL REVISION METHODS (Spaced Repetition Cache)
+// ============================================================
+
+export async function getLocalRevisions(userId: string): Promise<LocalRevision[]> {
+  if (typeof window === 'undefined') return [];
+  try {
+    const list = await db.revisions.toArray();
+    return list.filter((r) => r.user_id === userId || !r.user_id);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveLocalRevision(revision: LocalRevision) {
+  if (typeof window === 'undefined') return;
+  await db.revisions.put(revision);
+}
+
+// ============================================================
+// LOCAL CHAPTER PROGRESS METHODS
+// ============================================================
+
+export async function getLocalChapterProgress(userId: string): Promise<LocalChapterProgress[]> {
+  if (typeof window === 'undefined') return [];
+  try {
+    const list = await db.progress.toArray();
+    return list.filter((p) => p.user_id === userId || !p.user_id);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveLocalChapterProgress(progress: LocalChapterProgress) {
+  if (typeof window === 'undefined') return;
+  const existing = await db.progress.where({ user_id: progress.user_id, chapter_id: progress.chapter_id }).first();
+  if (existing && existing.id) {
+    await db.progress.update(existing.id, progress);
+  } else {
+    await db.progress.add(progress);
+  }
+}
+
+// ============================================================
 // BACKUP & RESTORE (1-Click JSON Snapshot)
 // ============================================================
 
