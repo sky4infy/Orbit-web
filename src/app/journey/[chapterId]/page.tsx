@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ShieldCheck, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, ArrowRight, ShieldCheck, Trash2 } from 'lucide-react';
 import { getChapterDetail, upsertChapterProgress } from '@/api/journey';
 import { ensureRevisionExists } from '@/api/revisions';
 import { useRequireAuth } from '@/lib/useRequireAuth';

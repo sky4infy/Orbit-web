@@ -279,10 +279,18 @@ export function deleteSubject(subjectId: string) {
   if (typeof window === 'undefined') return;
   const resolvedId = resolveSubjectId(subjectId);
   const hidden = getHiddenSubjects();
-  if (!hidden.includes(resolvedId)) {
-    hidden.push(resolvedId);
-    localStorage.setItem(HIDDEN_SUBJECTS_KEY, JSON.stringify(hidden));
+  if (!hidden.includes(resolvedId)) hidden.push(resolvedId);
+  if (!hidden.includes(subjectId)) hidden.push(subjectId);
+
+  // Also hide by name if it's a known standard subject
+  const allSubs = [...JEE_SUBJECTS, ...CS_SUBJECTS, ...getCustomSubjects()];
+  const found = allSubs.find((s) => s.id === subjectId || s.id === resolvedId);
+  if (found) {
+    const lower = found.name.toLowerCase();
+    if (!hidden.includes(lower)) hidden.push(lower);
   }
+  localStorage.setItem(HIDDEN_SUBJECTS_KEY, JSON.stringify(hidden));
+
   const customSubs = getCustomSubjects().filter((s) => s.id !== subjectId && s.id !== resolvedId);
   localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(customSubs));
 
@@ -377,6 +385,7 @@ export function saveChapterOverride(chapterId: string, updates: { status?: Chapt
 export function getCurriculumChapters(track: TrackType): CurriculumChapter[] {
   const hiddenChapters = getHiddenChapters();
   const hiddenSubjects = getHiddenSubjects();
+  const hiddenSubNames = new Set(hiddenSubjects.map((h) => h.toLowerCase()));
 
   const base = track === 'all' ? [...JEE_CHAPTERS, ...CS_CHAPTERS] : track === 'jee_nsep' ? JEE_CHAPTERS : CS_CHAPTERS;
   const custom = getCustomChapters().filter((c) => track === 'all' || c.track === track || c.track === 'all');
@@ -384,7 +393,12 @@ export function getCurriculumChapters(track: TrackType): CurriculumChapter[] {
   const overrides = getChapterOverrides();
 
   return all
-    .filter((c) => !hiddenChapters.includes(c.id) && !hiddenSubjects.includes(c.subjectId))
+    .filter(
+      (c) =>
+        !hiddenChapters.includes(c.id) &&
+        !hiddenSubjects.includes(c.subjectId) &&
+        !hiddenSubNames.has(c.subjectName.toLowerCase())
+    )
     .map((c) => {
       const o = overrides[c.id] || (LEGACY_CHAPTER_MAP[c.id] ? overrides[LEGACY_CHAPTER_MAP[c.id]] : undefined);
       const status = o?.status ?? c.status;
@@ -399,9 +413,12 @@ export function getCurriculumChapters(track: TrackType): CurriculumChapter[] {
 
 export function getCurriculumSubjects(track: TrackType) {
   const hiddenSubjects = getHiddenSubjects();
+  const hiddenSubNames = new Set(hiddenSubjects.map((h) => h.toLowerCase()));
   const base = track === 'all' ? [...JEE_SUBJECTS, ...CS_SUBJECTS] : track === 'jee_nsep' ? JEE_SUBJECTS : CS_SUBJECTS;
   const custom = getCustomSubjects().filter((s) => track === 'all' || s.track === track || s.track === 'all');
-  return [...base, ...custom].filter((s) => !hiddenSubjects.includes(s.id));
+  return [...base, ...custom].filter(
+    (s) => !hiddenSubjects.includes(s.id) && !hiddenSubNames.has(s.name.toLowerCase())
+  );
 }
 
 export const STARTER_TASK_TITLES = new Set([

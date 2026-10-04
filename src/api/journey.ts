@@ -28,16 +28,18 @@ export async function getSubjectProgress(track?: string, userId?: string | null)
   const { data, error } = await query.order('subject_name', { ascending: true });
   if (error) throw error;
   const hiddenSubs = getHiddenSubjects();
+  const hiddenSubNames = new Set(hiddenSubs.map((h) => h.toLowerCase()));
+
   const filtered = ((data ?? []) as unknown as SubjectProgressRow[]).filter(
-    (s) => !hiddenSubs.includes(s.subject_id)
+    (s) => !hiddenSubs.includes(s.subject_id) && !hiddenSubNames.has(s.subject_name.toLowerCase())
   );
 
-  // Merge any custom subjects from local storage that may have 0 chapters
+  // Merge any custom subjects from local storage so user-created subjects are NEVER dropped
   const customSubs = getCustomSubjects().filter(
-    (cs) => (track === 'all' || cs.track === track || cs.track === 'all') && !hiddenSubs.includes(cs.id)
+    (cs) => !hiddenSubs.includes(cs.id) && !hiddenSubNames.has(cs.name.toLowerCase())
   );
   for (const cs of customSubs) {
-    if (!filtered.some((s) => s.subject_id === cs.id)) {
+    if (!filtered.some((s) => s.subject_id === cs.id || s.subject_name.toLowerCase() === cs.name.toLowerCase())) {
       filtered.push({
         subject_id: cs.id,
         subject_name: cs.name,

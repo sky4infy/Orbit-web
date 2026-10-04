@@ -55,10 +55,14 @@ export default function PlannerPage() {
   const { userId, authLoading } = useRequireAuth();
   const [date] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [name, setName] = useState('there');
-  const [track, setTrack] = useState<TrackType>('jee_nsep');
+  const initialTrack: TrackType = typeof window !== 'undefined'
+    ? ((localStorage.getItem('orbit_active_track') as TrackType) || 'college_cs_aiml')
+    : 'college_cs_aiml';
+
+  const [track, setTrack] = useState<TrackType>(() => initialTrack);
   const [tasks, setTasks] = useState<TaskWithChapter[]>([]);
   const [chapters, setChapters] = useState<ChapterOverview[]>(() =>
-    getCurriculumChapters('jee_nsep').map((c) => ({
+    getCurriculumChapters(initialTrack).map((c) => ({
       id: c.id,
       name: c.name,
       subjectId: c.subjectId,
@@ -567,16 +571,14 @@ export default function PlannerPage() {
       )}
 
       {/* Add Task Modal */}
-      {userId && (
-        <AddTaskModal
-          userId={userId}
-          date={date}
-          chapters={chapters}
-          open={addTaskOpen}
-          onClose={() => setAddTaskOpen(false)}
-          onCreated={refresh}
-        />
-      )}
+      <AddTaskModal
+        userId={userId ?? 'local-user'}
+        date={date}
+        chapters={chapters}
+        open={addTaskOpen}
+        onClose={() => setAddTaskOpen(false)}
+        onCreated={refresh}
+      />
 
       {/* Edit Task Modal */}
       <EditTaskModal

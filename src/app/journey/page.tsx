@@ -21,11 +21,13 @@ import { ChapterStatusModal } from '@/components/ChapterStatusModal';
 import {
   getCurriculumChapters,
   getCurriculumSubjects,
+  getCustomSubjects,
   saveChapterOverride,
   deleteSubject,
   deleteChapter,
   getHiddenSubjects,
 } from '@/lib/curriculumData';
+import { supabase } from '@/lib/supabase/client';
 import { Orbit, ListFilter, AlertCircle, Plus, ChevronDown, CheckCircle2, Award, BookOpen, Trash2, RotateCcw } from 'lucide-react';
 
 const STATUS_META: Record<ChapterStatus, { label: string; color: string; badge: string }> = {
@@ -89,13 +91,14 @@ function getCachedCurriculum(track: TrackType): { subRows: SubjectProgressRow[];
   if (typeof window === 'undefined') return null;
   try {
     const hiddenSubs = getHiddenSubjects();
+    const hiddenSubNames = new Set(hiddenSubs.map((h) => h.toLowerCase()));
     const raw = localStorage.getItem(`orbit_cached_curriculum_${track}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.subRows) && parsed.grouped) {
-        // Strip any subjects that the user has hidden/deleted
+        // Strip any subjects that the user has hidden/deleted by ID or name
         const validSubRows = (parsed.subRows as SubjectProgressRow[]).filter(
-          (s) => !hiddenSubs.includes(s.subject_id)
+          (s) => !hiddenSubs.includes(s.subject_id) && !hiddenSubNames.has(s.subject_name.toLowerCase())
         );
         // If all cached subjects were hidden, avoid returning old default sample subjects
         if (validSubRows.length === 0 && parsed.subRows.length > 0) {
@@ -115,7 +118,13 @@ function getCachedCurriculum(track: TrackType): { subRows: SubjectProgressRow[];
 
 export default function JourneyPage() {
   const { userId } = useRequireAuth();
-  const [track, setTrack] = useState<TrackType>('jee_nsep');
+
+  // Eager initialization — load real cached user data (0ms delay) or show clean loading skeleton (never sample mock data)
+  const initialTrack: TrackType = typeof window !== 'undefined'
+    ? ((localStorage.getItem('orbit_active_track') as TrackType) || 'college_cs_aiml')
+    : 'college_cs_aiml';
+
+  const [track, setTrack] = useState<TrackType>(() => initialTrack);
   const [viewMode, setViewMode] = useState<'list' | 'orbit'>('list');
 
   // Modals state
@@ -137,11 +146,6 @@ export default function JourneyPage() {
   } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Eager initialization — load real cached user data (0ms delay) or show clean loading skeleton (never sample mock data)
-  const initialTrack: TrackType = typeof window !== 'undefined'
-    ? ((localStorage.getItem('orbit_active_track') as TrackType) || 'jee_nsep')
-    : 'jee_nsep';
-
   const cachedData = useMemo(() => getCachedCurriculum(initialTrack), [initialTrack]);
 
   const [subjects, setSubjects] = useState<SubjectProgressRow[]>(() => cachedData?.subRows ?? []);
@@ -150,11 +154,14 @@ export default function JourneyPage() {
   const [loading, setLoading] = useState<boolean>(() => !cachedData);
   const hasSyncedRef = useRef(false);
 
-  const reloadCurriculum = useCallback(async (activeTrack = track) => {
+  const reloadCurriculum = useCallback(async (activeTrack?: TrackType) => {
+    const currentTrack = activeTrack || (typeof window !== 'undefined'
+      ? ((localStorage.getItem('orbit_active_track') as TrackType) || track)
+      : track) || 'college_cs_aiml';
     try {
       const [subRows, chapRows] = await Promise.all([
-        withTimeout(getSubjectProgress(activeTrack, userId), 6000),
-        withTimeout(getChaptersOverview(activeTrack, userId), 6000),
+        withTimeout(getSubjectProgress(currentTrack, userId), 6000),
+        withTimeout(getChaptersOverview(currentTrack, userId), 6000),
       ]);
 
       const grouped: Record<string, ChapterStatusRow[]> = {};
@@ -166,7 +173,7 @@ export default function JourneyPage() {
             chapter_name: c.name,
             subject_id: c.subjectId,
             subject_name: c.subjectName,
-            track: activeTrack,
+            track: currentTrack,
             status: c.status,
             confidence_score: c.confidence,
             notes: null,
@@ -185,14 +192,14 @@ export default function JourneyPage() {
         if (typeof window !== 'undefined') {
           try {
             localStorage.setItem(
-              `orbit_cached_curriculum_${activeTrack}`,
+              `orbit_cached_curriculum_${currentTrack}`,
               JSON.stringify({ subRows, grouped })
             );
           } catch {}
         }
       } else if (!userId) {
         // Fallback demo for unauthenticated guest visitors only
-        const demo = buildCurriculumState(activeTrack);
+        const demo = buildCurriculumState(currentTrack);
         setSubjects(demo.subRows);
         setChaptersBySubject(demo.grouped);
         setOpenSubject((prev) => prev || demo.subRows[0]?.subject_id || null);
@@ -200,7 +207,7 @@ export default function JourneyPage() {
     } catch (err) {
       console.warn('Cloud curriculum fetch error:', err);
       if (!userId && subjects.length === 0) {
-        const demo = buildCurriculumState(activeTrack);
+        const demo = buildCurriculumState(currentTrack);
         setSubjects(demo.subRows);
         setChaptersBySubject(demo.grouped);
       }
@@ -227,21 +234,40 @@ export default function JourneyPage() {
     }
   }, [track, reloadCurriculum]);
 
+  // Auto-recovery: If user was accidentally flipped to 'jee_nsep' by the profile button
+  // but has custom CS subjects or primary focus is CS & AI, restore it immediately!
+  useEffect(() => {
+    const customSubs = getCustomSubjects();
+    const currentTrack = typeof window !== 'undefined' ? localStorage.getItem('orbit_active_track') : null;
+    const hasCsContent = customSubs.some((s) => s.track === 'college_cs_aiml' || !s.track);
+    if (currentTrack === 'jee_nsep' && (hasCsContent || customSubs.length > 0)) {
+      localStorage.setItem('orbit_active_track', 'college_cs_aiml');
+      setTrack('college_cs_aiml');
+      if (userId) {
+        supabase.auth.updateUser({ data: { track: 'college_cs_aiml' } }).catch(() => {});
+      }
+      reloadCurriculum('college_cs_aiml');
+    }
+  }, [userId, reloadCurriculum]);
+
   // Sync all user data on initial load
   useEffect(() => {
     if (!userId) {
-      reloadCurriculum(track);
+      reloadCurriculum(initialTrack);
       return;
     }
 
     if (!hasSyncedRef.current) {
       hasSyncedRef.current = true;
-      // Do not prematurely load un-synced default curriculum before cloud preferences are synced
       syncAllUserData(userId).then(() => {
-        reloadCurriculum(track);
+        // Read true latest track at the moment sync finishes, not stale closure
+        const latestTrack = (typeof window !== 'undefined'
+          ? (localStorage.getItem('orbit_active_track') as TrackType)
+          : null) || initialTrack;
+        reloadCurriculum(latestTrack);
       });
     }
-  }, [userId, track, reloadCurriculum]);
+  }, [userId, reloadCurriculum, initialTrack]);
 
   const handleManualSync = async () => {
     if (!userId || isSyncing) return;

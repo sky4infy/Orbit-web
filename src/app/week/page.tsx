@@ -69,7 +69,12 @@ const getFallbackExams = (activeTrack: TrackType): ExamReadinessRow[] => {
 
 export default function WeekPage() {
   const { userId, authLoading } = useRequireAuth();
-  const [track, setTrack] = useState<TrackType>('jee_nsep');
+
+  const initialTrack: TrackType = typeof window !== 'undefined'
+    ? ((localStorage.getItem('orbit_active_track') as TrackType) || 'college_cs_aiml')
+    : 'college_cs_aiml';
+
+  const [track, setTrack] = useState<TrackType>(() => initialTrack);
 
   const weekDates = useMemo(
     () =>
@@ -85,7 +90,7 @@ export default function WeekPage() {
   );
   const [exams, setExams] = useState<ExamReadinessRow[]>([]);
   const [chapters, setChapters] = useState<ChapterOverview[]>(() =>
-    getCurriculumChapters('jee_nsep').map((c) => ({
+    getCurriculumChapters(initialTrack).map((c) => ({
       id: c.id,
       name: c.name,
       subjectId: c.subjectId,
@@ -277,20 +282,18 @@ export default function WeekPage() {
       </section>
 
       {/* Add Exam Modal */}
-      {userId && (
-        <AddExamModal
-          userId={userId}
-          chapters={chapters}
-          open={addExamOpen}
-          onClose={() => setAddExamOpen(false)}
-          onCreated={refresh}
-        />
-      )}
+      <AddExamModal
+        userId={userId ?? 'local-user'}
+        chapters={chapters}
+        open={addExamOpen}
+        onClose={() => setAddExamOpen(false)}
+        onCreated={refresh}
+      />
 
       {/* Edit Exam Modal */}
-      {userId && editingExam && (
+      {editingExam && (
         <EditExamModal
-          userId={userId}
+          userId={userId ?? 'local-user'}
           exam={editingExam}
           chapters={chapters}
           open={Boolean(editingExam)}

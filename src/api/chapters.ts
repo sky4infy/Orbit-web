@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import type { ChapterStatus, ChapterStatusRow } from '@/types/database.types';
-import { getHiddenSubjects, getHiddenChapters } from '@/lib/curriculumData';
+import { getHiddenSubjects, getHiddenChapters, getCustomChapters } from '@/lib/curriculumData';
 import { syncHiddenCurriculum } from '@/lib/syncService';
 
 export interface ChapterOverview {
@@ -32,10 +32,16 @@ export async function getChaptersOverview(track?: string, userId?: string | null
   if (error) throw error;
 
   const hiddenSubjects = getHiddenSubjects();
+  const hiddenSubNames = new Set(hiddenSubjects.map((h) => h.toLowerCase()));
   const hiddenChapters = getHiddenChapters();
 
-  return ((data ?? []) as unknown as ChapterStatusRow[])
-    .filter((row) => !hiddenSubjects.includes(row.subject_id) && !hiddenChapters.includes(row.chapter_id))
+  const overviewRows = ((data ?? []) as unknown as ChapterStatusRow[])
+    .filter(
+      (row) =>
+        !hiddenSubjects.includes(row.subject_id) &&
+        !hiddenSubNames.has(row.subject_name.toLowerCase()) &&
+        !hiddenChapters.includes(row.chapter_id)
+    )
     .map((row) => ({
       id: row.chapter_id,
       name: row.chapter_name,
@@ -45,4 +51,27 @@ export async function getChaptersOverview(track?: string, userId?: string | null
       status: row.status,
       unresolvedMistakes: row.unresolved_mistakes,
     }));
+
+  // Merge any custom chapters from local storage so user content is never dropped
+  const customChaps = getCustomChapters().filter(
+    (c) =>
+      !hiddenChapters.includes(c.id) &&
+      !hiddenSubjects.includes(c.subjectId) &&
+      !hiddenSubNames.has(c.subjectName.toLowerCase())
+  );
+  for (const cc of customChaps) {
+    if (!overviewRows.some((r) => r.id === cc.id)) {
+      overviewRows.push({
+        id: cc.id,
+        name: cc.name,
+        subjectId: cc.subjectId,
+        subjectName: cc.subjectName,
+        confidence: cc.confidence,
+        status: cc.status,
+        unresolvedMistakes: cc.unresolvedMistakes,
+      });
+    }
+  }
+
+  return overviewRows;
 }

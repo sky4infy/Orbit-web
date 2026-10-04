@@ -129,12 +129,17 @@ const getFallbackRevisions = (activeTrack: TrackType): DueRevisionRow[] => {
 
 export default function MistakesPage() {
   const { userId, authLoading } = useRequireAuth();
-  const [track, setTrack] = useState<TrackType>('jee_nsep');
+
+  const initialTrack: TrackType = typeof window !== 'undefined'
+    ? ((localStorage.getItem('orbit_active_track') as TrackType) || 'college_cs_aiml')
+    : 'college_cs_aiml';
+
+  const [track, setTrack] = useState<TrackType>(() => initialTrack);
 
   // Eager initialization — empty for auth users, never flash sample errors
   const [mistakes, setMistakes] = useState<MistakeRow[]>([]);
   const [chapters, setChapters] = useState<ChapterOverview[]>(() =>
-    getCurriculumChapters('jee_nsep').map((c) => ({
+    getCurriculumChapters(initialTrack).map((c) => ({
       id: c.id,
       name: c.name,
       subjectId: c.subjectId,
@@ -315,15 +320,13 @@ export default function MistakesPage() {
       )}
 
       {/* Log Mistake Modal */}
-      {userId && (
-        <LogMistakeModal
-          userId={userId}
-          chapters={chapters}
-          open={logOpen}
-          onClose={() => setLogOpen(false)}
-          onCreated={refresh}
-        />
-      )}
+      <LogMistakeModal
+        userId={userId ?? 'local-user'}
+        chapters={chapters}
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        onCreated={refresh}
+      />
 
       {/* Revision Session Modal */}
       {revisionOpen && (
