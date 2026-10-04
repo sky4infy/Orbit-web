@@ -24,6 +24,7 @@ import {
   saveChapterOverride,
   deleteSubject,
   deleteChapter,
+  getHiddenSubjects,
 } from '@/lib/curriculumData';
 import { Orbit, ListFilter, AlertCircle, Plus, ChevronDown, CheckCircle2, Award, BookOpen, Trash2, RotateCcw } from 'lucide-react';
 
@@ -87,11 +88,23 @@ function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
 function getCachedCurriculum(track: TrackType): { subRows: SubjectProgressRow[]; grouped: Record<string, ChapterStatusRow[]> } | null {
   if (typeof window === 'undefined') return null;
   try {
+    const hiddenSubs = getHiddenSubjects();
     const raw = localStorage.getItem(`orbit_cached_curriculum_${track}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.subRows) && parsed.grouped) {
-        return parsed;
+        // Strip any subjects that the user has hidden/deleted
+        const validSubRows = (parsed.subRows as SubjectProgressRow[]).filter(
+          (s) => !hiddenSubs.includes(s.subject_id)
+        );
+        // If all cached subjects were hidden, avoid returning old default sample subjects
+        if (validSubRows.length === 0 && parsed.subRows.length > 0) {
+          return null;
+        }
+        return {
+          subRows: validSubRows,
+          grouped: parsed.grouped,
+        };
       }
     }
   } catch {
@@ -140,8 +153,8 @@ export default function JourneyPage() {
   const reloadCurriculum = useCallback(async (activeTrack = track) => {
     try {
       const [subRows, chapRows] = await Promise.all([
-        withTimeout(getSubjectProgress(activeTrack), 6000),
-        withTimeout(getChaptersOverview(activeTrack), 6000),
+        withTimeout(getSubjectProgress(activeTrack, userId), 6000),
+        withTimeout(getChaptersOverview(activeTrack, userId), 6000),
       ]);
 
       const grouped: Record<string, ChapterStatusRow[]> = {};
@@ -223,7 +236,7 @@ export default function JourneyPage() {
 
     if (!hasSyncedRef.current) {
       hasSyncedRef.current = true;
-      reloadCurriculum(track);
+      // Do not prematurely load un-synced default curriculum before cloud preferences are synced
       syncAllUserData(userId).then(() => {
         reloadCurriculum(track);
       });

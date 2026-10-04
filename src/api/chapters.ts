@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase/client';
 import type { ChapterStatus, ChapterStatusRow } from '@/types/database.types';
 import { getHiddenSubjects, getHiddenChapters } from '@/lib/curriculumData';
+import { syncHiddenCurriculum } from '@/lib/syncService';
 
 export interface ChapterOverview {
   id: string;
@@ -19,7 +20,10 @@ export interface ChapterOverview {
  * round trip, and the join logic lives in exactly one place (the view)
  * instead of being reimplemented in every function that needs it.
  */
-export async function getChaptersOverview(track?: string): Promise<ChapterOverview[]> {
+export async function getChaptersOverview(track?: string, userId?: string | null): Promise<ChapterOverview[]> {
+  if (userId) {
+    await syncHiddenCurriculum(userId).catch(() => {});
+  }
   let query = supabase.from('my_chapter_status').select('*');
   if (track && track !== 'all') {
     query = query.eq('track', track);

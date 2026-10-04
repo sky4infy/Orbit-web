@@ -7,6 +7,7 @@ import {
   saveChapterOverride,
   addCustomSubject,
   addCustomChapter,
+  getCustomSubjects,
   deleteSubject as deleteLocalSubject,
   deleteChapter as deleteLocalChapter,
   getHiddenSubjects,
@@ -16,7 +17,10 @@ import {
 import { syncHiddenCurriculum } from '@/lib/syncService';
 
 /** One query. All aggregation (chapter counts, mastered counts, avg confidence) already done in Postgres. */
-export async function getSubjectProgress(track?: string): Promise<SubjectProgressRow[]> {
+export async function getSubjectProgress(track?: string, userId?: string | null): Promise<SubjectProgressRow[]> {
+  if (userId) {
+    await syncHiddenCurriculum(userId).catch(() => {});
+  }
   let query = supabase.from('my_subject_progress').select('*');
   if (track && track !== 'all') {
     query = query.eq('track', track);
@@ -24,9 +28,29 @@ export async function getSubjectProgress(track?: string): Promise<SubjectProgres
   const { data, error } = await query.order('subject_name', { ascending: true });
   if (error) throw error;
   const hiddenSubs = getHiddenSubjects();
-  return ((data ?? []) as unknown as SubjectProgressRow[]).filter(
+  const filtered = ((data ?? []) as unknown as SubjectProgressRow[]).filter(
     (s) => !hiddenSubs.includes(s.subject_id)
   );
+
+  // Merge any custom subjects from local storage that may have 0 chapters
+  const customSubs = getCustomSubjects().filter(
+    (cs) => (track === 'all' || cs.track === track || cs.track === 'all') && !hiddenSubs.includes(cs.id)
+  );
+  for (const cs of customSubs) {
+    if (!filtered.some((s) => s.subject_id === cs.id)) {
+      filtered.push({
+        subject_id: cs.id,
+        subject_name: cs.name,
+        track: cs.track,
+        total_chapters: 0,
+        mastered_count: 0,
+        revision_due_count: 0,
+        avg_confidence: 50,
+      });
+    }
+  }
+
+  return filtered;
 }
 
 /** One query. Already joined with subject name and unresolved mistake count. */
