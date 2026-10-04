@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import type { ChapterStatus, ChapterStatusRow } from '@/types/database.types';
+import { getHiddenSubjects, getHiddenChapters } from '@/lib/curriculumData';
 
 export interface ChapterOverview {
   id: string;
@@ -26,13 +27,18 @@ export async function getChaptersOverview(track?: string): Promise<ChapterOvervi
   const { data, error } = await query;
   if (error) throw error;
 
-  return ((data ?? []) as unknown as ChapterStatusRow[]).map((row) => ({
-    id: row.chapter_id,
-    name: row.chapter_name,
-    subjectId: row.subject_id,
-    subjectName: row.subject_name,
-    confidence: row.confidence_score,
-    status: row.status,
-    unresolvedMistakes: row.unresolved_mistakes,
-  }));
+  const hiddenSubjects = getHiddenSubjects();
+  const hiddenChapters = getHiddenChapters();
+
+  return ((data ?? []) as unknown as ChapterStatusRow[])
+    .filter((row) => !hiddenSubjects.includes(row.subject_id) && !hiddenChapters.includes(row.chapter_id))
+    .map((row) => ({
+      id: row.chapter_id,
+      name: row.chapter_name,
+      subjectId: row.subject_id,
+      subjectName: row.subject_name,
+      confidence: row.confidence_score,
+      status: row.status,
+      unresolvedMistakes: row.unresolved_mistakes,
+    }));
 }

@@ -4,26 +4,29 @@ import {
   getCustomSubjects,
   getCustomChapters,
   getChapterOverrides,
+  getHiddenSubjects,
+  getHiddenChapters,
   resolveChapterId,
   resolveSubjectId,
+  isStarterTask,
+  STARTER_TASK_TITLES,
 } from '@/lib/curriculumData';
 import { generateUuid, isUuid } from '@/lib/uuid';
 
 let isSyncing = false;
 
 /**
- * Uploads all locally stored custom subjects (e.g. created on mobile) to Supabase.
+ * Bi-directional sync for custom subjects between local storage and Supabase.
  */
 export async function syncCustomSubjectsToCloud(userId: string) {
   if (!userId) return;
   const localSubjects = getCustomSubjects();
-  if (localSubjects.length === 0) return;
 
   try {
-    // Fetch existing user subjects from Supabase
+    // 1. Fetch existing user subjects from Supabase
     const { data: cloudSubjects, error } = await supabase
       .from('subject')
-      .select('id, name')
+      .select('id, name, track')
       .eq('user_id', userId);
 
     if (error) {
@@ -34,6 +37,7 @@ export async function syncCustomSubjectsToCloud(userId: string) {
     const cloudList = (cloudSubjects as any[]) ?? [];
     const cloudNames = new Set(cloudList.map((s) => (s.name ?? '').toLowerCase()));
 
+    // 2. Push any new local subjects up to cloud
     for (const sub of localSubjects) {
       if (!cloudNames.has(sub.name.toLowerCase())) {
         const newId = isUuid(sub.id) ? sub.id : generateUuid();
@@ -47,6 +51,17 @@ export async function syncCustomSubjectsToCloud(userId: string) {
         if (!insertError) {
           sub.id = newId;
         }
+      }
+    }
+
+    // 3. Pull down any custom subjects created on another device
+    for (const cs of cloudList) {
+      if (!localSubjects.some((ls) => ls.name.toLowerCase() === (cs.name ?? '').toLowerCase() || ls.id === cs.id)) {
+        localSubjects.push({
+          id: cs.id,
+          name: cs.name,
+          track: cs.track || 'jee_nsep',
+        });
       }
     }
 
@@ -104,6 +119,21 @@ export async function syncCustomChaptersToCloud(userId: string) {
       }
     }
 
+    for (const cc of cloudList) {
+      if (!localChapters.some((lc) => lc.id === cc.id)) {
+        localChapters.push({
+          id: cc.id,
+          name: cc.name,
+          subjectId: cc.subject_id,
+          subjectName: 'Custom Chapter',
+          track: 'jee_nsep',
+          status: 'not_started',
+          confidence: 50,
+          unresolvedMistakes: 0,
+        });
+      }
+    }
+
     if (typeof window !== 'undefined') {
       localStorage.setItem('orbit_custom_chapters', JSON.stringify(localChapters));
     }
@@ -144,23 +174,95 @@ export async function syncChapterOverridesToCloud(userId: string) {
 }
 
 /**
+ * Synchronizes hidden/deleted subjects and chapters across devices via Supabase.
+ */
+export async function syncHiddenCurriculum(userId: string) {
+  if (!userId || typeof window === 'undefined') return;
+
+  try {
+    const localHiddenSubs = getHiddenSubjects();
+    const localHiddenChaps = getHiddenChapters();
+
+    // 1. Fetch cloud hidden preferences from event_log
+    const { data, error } = await supabase
+      .from('event_log')
+      .select('metadata, created_at')
+      .eq('user_id', userId)
+      .eq('event_type', 'chapter_status_updated')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    let cloudHiddenSubs: string[] = [];
+    let cloudHiddenChaps: string[] = [];
+
+    if (!error && data) {
+      for (const row of data as any[]) {
+        if (row.metadata?.preference === 'hidden_curriculum') {
+          cloudHiddenSubs = row.metadata.hidden_subjects ?? [];
+          cloudHiddenChaps = row.metadata.hidden_chapters ?? [];
+          break;
+        }
+      }
+    }
+
+    // Merge local and cloud hidden items
+    const mergedSubs = Array.from(new Set([...localHiddenSubs, ...cloudHiddenSubs]));
+    const mergedChaps = Array.from(new Set([...localHiddenChaps, ...cloudHiddenChaps]));
+
+    // Update local storage so deleted subjects remain deleted on this device
+    localStorage.setItem('orbit_hidden_subjects', JSON.stringify(mergedSubs));
+    localStorage.setItem('orbit_hidden_chapters', JSON.stringify(mergedChaps));
+
+    // If this device had deleted items not yet recorded in the cloud, push to Supabase
+    if (
+      mergedSubs.length > cloudHiddenSubs.length ||
+      mergedChaps.length > cloudHiddenChaps.length
+    ) {
+      await supabase.from('event_log').insert({
+        user_id: userId,
+        event_type: 'chapter_status_updated',
+        metadata: {
+          preference: 'hidden_curriculum',
+          hidden_subjects: mergedSubs,
+          hidden_chapters: mergedChaps,
+        },
+      } as never);
+    }
+  } catch (err) {
+    console.warn('syncHiddenCurriculum error:', err);
+  }
+}
+
+/**
  * Bi-directional task synchronization:
- * 1. Pushes any legacy/local offline tasks from Dexie up to Supabase with valid UUIDs.
- * 2. Pulls all cloud tasks down to Dexie so PC & Phone have identical offline caches.
+ * 1. Pushes real user tasks from Dexie up to Supabase with valid UUIDs.
+ * 2. Purges any sample starter tasks so deleted tasks are NEVER resurrected.
+ * 3. Pulls cloud tasks down to Dexie so PC & Phone have identical offline caches.
  */
 export async function syncTasksBetweenLocalAndCloud(userId: string) {
   if (!userId) return;
 
   try {
-    // Step 1: Push local offline tasks to Supabase
+    // Clean up any leaked starter tasks in Supabase for this user
+    for (const starterTitle of Array.from(STARTER_TASK_TITLES)) {
+      await supabase.from('task').delete().eq('user_id', userId).eq('title', starterTitle);
+    }
+
+    // Step 1: Push local offline tasks to Supabase (ONLY real tasks, NEVER starter tasks!)
     const localTasks = await db.tasks.toArray();
     for (const t of localTasks) {
+      // If it's a sample starter task, purge it from local Dexie and NEVER upload
+      if (isStarterTask(t.title)) {
+        await deleteLocalTask(t.id);
+        continue;
+      }
+
       if (t.user_id === userId || !t.user_id) {
         const isLegacyId = !isUuid(t.id);
         const realId = isLegacyId ? generateUuid() : t.id;
         const realChapId = resolveChapterId(t.chapter_id);
 
-        // Push to cloud
+        // Push real custom task to cloud
         const { error } = await supabase.from('task').upsert({
           id: realId,
           user_id: userId,
@@ -179,7 +281,6 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
         } as never, { onConflict: 'id' });
 
         if (!error && isLegacyId) {
-          // Replace legacy ID with valid UUID in Dexie
           await deleteLocalTask(t.id);
           await saveLocalTask({
             ...t,
@@ -191,13 +292,13 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
       }
     }
 
-    // Step 2: Pull cloud tasks into local Dexie
+    // Step 2: Pull cloud tasks into local Dexie (excluding any starter tasks)
     const { data: cloudTasks, error: fetchError } = await supabase
       .from('task')
       .select('*')
       .eq('user_id', userId);
 
-    const taskList = (cloudTasks as any[]) ?? [];
+    const taskList = ((cloudTasks as any[]) ?? []).filter((ct) => !isStarterTask(ct.title));
     if (!fetchError && taskList.length > 0) {
       for (const ct of taskList) {
         await saveLocalTask({
@@ -234,6 +335,7 @@ export async function syncAllUserData(userId: string): Promise<void> {
 
   try {
     await Promise.allSettled([
+      syncHiddenCurriculum(userId),
       syncCustomSubjectsToCloud(userId),
       syncCustomChaptersToCloud(userId),
       syncChapterOverridesToCloud(userId),
@@ -242,7 +344,6 @@ export async function syncAllUserData(userId: string): Promise<void> {
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('orbit_last_synced_at', Date.now().toString());
-      window.dispatchEvent(new CustomEvent('orbit:sync_completed'));
     }
   } catch (err) {
     console.warn('Orbit background sync error:', err);

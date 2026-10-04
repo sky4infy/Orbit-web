@@ -56,9 +56,7 @@ export default function PlannerPage() {
   const [date] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [name, setName] = useState('there');
   const [track, setTrack] = useState<TrackType>('jee_nsep');
-  const [tasks, setTasks] = useState<TaskWithChapter[]>(() =>
-    getStarterTasks('jee_nsep', format(new Date(), 'yyyy-MM-dd'))
-  );
+  const [tasks, setTasks] = useState<TaskWithChapter[]>([]);
   const [chapters, setChapters] = useState<ChapterOverview[]>(() =>
     getCurriculumChapters('jee_nsep').map((c) => ({
       id: c.id,

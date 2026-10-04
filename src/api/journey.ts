@@ -9,8 +9,11 @@ import {
   addCustomChapter,
   deleteSubject as deleteLocalSubject,
   deleteChapter as deleteLocalChapter,
+  getHiddenSubjects,
+  getHiddenChapters,
   computeConfidence,
 } from '@/lib/curriculumData';
+import { syncHiddenCurriculum } from '@/lib/syncService';
 
 /** One query. All aggregation (chapter counts, mastered counts, avg confidence) already done in Postgres. */
 export async function getSubjectProgress(track?: string): Promise<SubjectProgressRow[]> {
@@ -20,7 +23,10 @@ export async function getSubjectProgress(track?: string): Promise<SubjectProgres
   }
   const { data, error } = await query.order('subject_name', { ascending: true });
   if (error) throw error;
-  return (data ?? []) as unknown as SubjectProgressRow[];
+  const hiddenSubs = getHiddenSubjects();
+  return ((data ?? []) as unknown as SubjectProgressRow[]).filter(
+    (s) => !hiddenSubs.includes(s.subject_id)
+  );
 }
 
 /** One query. Already joined with subject name and unresolved mistake count. */
@@ -32,7 +38,10 @@ export async function getChaptersForSubject(subjectId: string): Promise<ChapterS
     .eq('subject_id', validSubjectId)
     .order('chapter_name', { ascending: true });
   if (error) throw error;
-  return (data ?? []) as unknown as ChapterStatusRow[];
+  const hiddenChaps = getHiddenChapters();
+  return ((data ?? []) as unknown as ChapterStatusRow[]).filter(
+    (c) => !hiddenChaps.includes(c.chapter_id)
+  );
 }
 
 export async function getChapterStatusRow(chapterId: string): Promise<ChapterStatusRow | null> {
@@ -236,6 +245,7 @@ export async function deleteCustomSubject(userId: string, subjectId: string) {
   if (userId) {
     try {
       await supabase.from('subject').delete().eq('id', subjectId).eq('user_id', userId);
+      syncHiddenCurriculum(userId).catch(() => {});
     } catch (err) {
       console.warn('Supabase delete subject failed:', err);
     }
@@ -250,6 +260,7 @@ export async function deleteCustomChapter(userId: string, chapterId: string) {
   if (userId) {
     try {
       await supabase.from('chapter').delete().eq('id', chapterId).eq('user_id', userId);
+      syncHiddenCurriculum(userId).catch(() => {});
     } catch (err) {
       console.warn('Supabase delete chapter failed:', err);
     }

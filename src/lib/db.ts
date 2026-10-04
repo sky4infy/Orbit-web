@@ -12,7 +12,7 @@ import type {
   ExamType,
   TrackType,
 } from '@/types/database.types';
-import { getCurriculumChapters, getStarterTasks, resolveChapterId } from '@/lib/curriculumData';
+import { getCurriculumChapters, getStarterTasks, resolveChapterId, isStarterTask } from '@/lib/curriculumData';
 
 export interface LocalTask {
   id: string;
@@ -145,7 +145,10 @@ export async function getLocalTasksForDate(userId: string, date: string, track: 
       return [];
     }
 
-    return list.map((t) => {
+    // For authenticated users, completely filter out starter tasks
+    const effectiveList = userId ? list.filter((t) => !isStarterTask(t.title)) : list;
+
+    return effectiveList.map((t) => {
       const resolvedChapId = resolveChapterId(t.chapter_id);
       const chap = chapterMap.get(resolvedChapId) || chapterMap.get(t.chapter_id);
       return {

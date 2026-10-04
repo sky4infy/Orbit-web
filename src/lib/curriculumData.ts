@@ -404,6 +404,27 @@ export function getCurriculumSubjects(track: TrackType) {
   return [...base, ...custom].filter((s) => !hiddenSubjects.includes(s.id));
 }
 
+export const STARTER_TASK_TITLES = new Set([
+  'HC Verma Rotational Dynamics: 15 Core MCQs',
+  'Chemical Bonding: Molecular Orbital Theory Diagrams',
+  'NSEP Section B: 5 Multi-Correct Mechanics Challenge',
+  'Circles & Tangents: 10 JEE Advanced Level PYQs',
+  'Dynamic Programming: 0/1 Knapsack & Subset Sum Patterns',
+  'PyTorch: Implement Multi-Head Attention from Scratch',
+  'System Design: Redis Caching & Cache Invalidation Strategies',
+  'Operating Systems: Producer-Consumer Concurrency Semaphore Exercise',
+  'Wave Optics — Concept Review & Key Formulas',
+  'Matrices & Determinants — Previous Year Problems',
+  'Electromagnetic Induction — Self-Assessment Test',
+  'Rotational Motion — Error Analysis & Mistake Log',
+  'Coordination Compounds — NCERT Quick Scan',
+]);
+
+export function isStarterTask(title: string): boolean {
+  if (!title) return false;
+  return STARTER_TASK_TITLES.has(title.trim());
+}
+
 export function getStarterTasks(track: TrackType, date: string): TaskWithChapter[] {
   if (track === 'jee_nsep') {
     return [

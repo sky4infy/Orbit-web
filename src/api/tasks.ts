@@ -3,7 +3,7 @@ import { addDays, format } from 'date-fns';
 import type { Task, TaskStatus, IncompleteReason, TimeSlot, EffortLevel, TrackType } from '@/types/database.types';
 import { logEvent } from '@/api/events';
 import { generateUuid, isUuid } from '@/lib/uuid';
-import { resolveChapterId } from '@/lib/curriculumData';
+import { resolveChapterId, isStarterTask } from '@/lib/curriculumData';
 import {
   db,
   getLocalTasksForDate,
@@ -58,8 +58,12 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
         .order('position', { ascending: true });
 
       if (!error && data) {
-        // Cache to Dexie
-        for (const d of (data as any[])) {
+        const rawList = (data as any[]) ?? [];
+        // Filter out any starter sample tasks
+        const realCloudTasks = rawList.filter((d) => !isStarterTask(d.title));
+
+        // Cache real cloud tasks to Dexie
+        for (const d of realCloudTasks) {
           await saveLocalTask({
             id: d.id,
             user_id: userId,
@@ -79,15 +83,17 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
           });
         }
 
-        if (data.length > 0) {
-          return data as unknown as TaskWithChapter[];
+        if (realCloudTasks.length > 0) {
+          return realCloudTasks as unknown as TaskWithChapter[];
         }
 
         // Supabase has 0 tasks on this date.
-        // Check if there are local offline tasks in IndexedDB that need syncing (e.g. created on phone)
+        // Check if there are real local offline tasks in IndexedDB created on phone
         const localList = await getLocalTasksForDate(userId, date, activeTrack);
-        if (localList.length > 0) {
-          for (const t of localList) {
+        const realLocalTasks = localList.filter((t) => !isStarterTask(t.title));
+
+        if (realLocalTasks.length > 0) {
+          for (const t of realLocalTasks) {
             const realId = isUuid(t.id) ? t.id : generateUuid();
             const realChapId = resolveChapterId(t.chapter?.id ?? (t as any).chapter_id);
             await supabase.from('task').upsert({
@@ -119,9 +125,10 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
               t.id = realId;
             }
           }
-          return localList;
+          return realLocalTasks;
         }
 
+        // The user has 0 tasks for today (or deleted them all) — return empty!
         return [];
       }
     } catch (err) {
