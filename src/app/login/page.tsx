@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Eye, EyeOff } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import type { TrackType } from '@/types/database.types';
 
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const [focusTrack, setFocusTrack] = useState<TrackType>('jee_nsep');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,13 +175,24 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <input
-            className="rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 text-sm outline-none placeholder:text-paper/30"
-            placeholder="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="relative">
+            <input
+              className="w-full rounded-xl2 border border-white/10 bg-ink-100 px-4 py-3 pr-11 text-sm outline-none placeholder:text-paper/30 transition focus:border-amber/50"
+              placeholder="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-paper/40 transition hover:text-paper/80"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
 
           {notice && (
             <p className="rounded-xl2 border border-amber/30 bg-amber/10 p-3 text-xs text-amber">{notice}</p>
