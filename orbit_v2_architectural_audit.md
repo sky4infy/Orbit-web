@@ -167,6 +167,7 @@ Due revisions in `db.revisions` must automatically show up as suggested tasks in
 - [x] **Cross-Device Curriculum & Deletion Sync:** Propagates user-hidden subjects and custom disciplines across devices using Supabase `event_log` preference streaming.
 - [x] **Single-Execution Sync Guards:** Prevents screen flickering and redundant re-render cascades using idempotent lifecycle references (`hasInitializedRef`, `hasSyncedRef`).
 - [x] **Drift-Proof Focus Engine & Screen WakeLock (`src/components/FocusTimerModal.tsx`):** Mitigates mobile background tab throttling via timestamp-delta calculation ($\Delta t = \text{Date.now()} - t_{\text{start}}$) and prevents device sleep during deep work sessions using the W3C Screen WakeLock API.
+- [x] **Test Milestone Lifecycle & Edit Capabilities (`src/app/week/page.tsx`, `src/components/EditExamModal.tsx`):** Eliminated sample exam resurrection on page reload for authenticated users (`getHiddenSampleExams`, zero-state fallback suppression), and introduced full modal-based test editing (name, category, target date, linked syllabus chapters) with bidirectional Dexie-Supabase sync.
 
 ---
 
@@ -177,5 +178,6 @@ Due revisions in `db.revisions` must automatically show up as suggested tasks in
 | **Offline Resilience** | Fragile (silent failure on type error) | Resilient dual-layer (Dexie cache + RFC 4122 Supabase sync) |
 | **Cross-Device Parity** | 0% (Data trapped in local browser storage) | 100% (Bidirectional cloud reconciliation across phone & PC) |
 | **Sample Task Isolation** | Leaked into persistent account state | Firewalled (`isStarterTask` filter + auto-purge on sync) |
+| **Test Milestone Isolation** | Sample tests resurrected on reload; read-only | Firewalled (`hidden_sample_exams`), editable & bi-directionally cloud-synced |
 | **Deep Work Fidelity** | Timer froze on phone lock/timeout | Drift-proof timestamp delta + Screen WakeLock active keep-alive |
 | **Curriculum Customization** | Siloed to device `localStorage` | Cloud-persisted (Custom tables + `event_log` preference streaming) |
