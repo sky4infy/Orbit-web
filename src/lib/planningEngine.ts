@@ -1,6 +1,7 @@
 import type { TrackType, TimeSlot, EffortLevel } from '@/types/database.types';
 import type { TaskWithChapter } from '@/api/tasks';
 import { getCurriculumChapters } from '@/lib/curriculumData';
+import type { UnifiedStudentState, UnifiedChapterState } from '@/lib/academicState';
 
 export interface PlanningEngineInput {
   userId: string;
@@ -10,6 +11,7 @@ export interface PlanningEngineInput {
   energyLevel?: number; // 1 to 5
   daysToKeyExam?: number; // e.g. 45 days to NSEP or 4 days to contest
   existingTasks: TaskWithChapter[];
+  academicState?: UnifiedStudentState;
 }
 
 export interface SuggestedTask {
@@ -32,79 +34,185 @@ export interface PlanningEngineOutput {
   rationale: string;
   primaryFocus: string;
   overloadRisk: boolean;
+  burnoutNotice?: string | null;
 }
 
 /**
- * Layer 2: Deterministic Planning Engine (Zero Hallucination).
- * Computes optimal task allocation based on academic memory, exam proximity,
- * mistake backlog, and energy constraints.
+ * Deterministic Planning Engine (Zero Hallucination).
+ * Computes optimal task allocation based on live academic memory, exam proximity,
+ * mistake taxonomy, and cognitive capacity constraints.
  */
 export function generateOptimalDayPlan(input: PlanningEngineInput): PlanningEngineOutput {
-  const energy = input.energyLevel ?? 4;
-  const baseHours = input.availableHours ?? 4.5;
-  // Energy multiplier: if drained (1-2), scale down capacity to prevent burnout
-  const energyMultiplier = energy === 1 ? 0.6 : energy === 2 ? 0.75 : energy === 3 ? 0.9 : 1.0;
+  const isOlympiad = input.track === 'jee_nsep';
+  const state = input.academicState;
+
+  // 1. Determine Capacity & Energy Multiplier
+  const cognitive = state?.cognitiveProfile;
+  const energy = input.energyLevel ?? cognitive?.reportedEnergy ?? 4;
+  const baseHours = input.availableHours ?? cognitive?.recommendedStudyHours ?? (isOlympiad ? 4.5 : 4.0);
+
+  let energyMultiplier = cognitive?.energyMultiplier ?? (
+    energy === 1 ? 0.6 : energy === 2 ? 0.75 : energy === 3 ? 0.88 : 1.0
+  );
+
+  const fatigueRisk = cognitive?.fatigueRisk ?? (energy <= 2);
   const maxRecommendedMinutes = Math.round(baseHours * 60 * energyMultiplier);
 
-  const chapters = getCurriculumChapters(input.track);
+  // 2. Obtain Scored Chapter Pipeline
+  let scoredCandidates: {
+    id: string;
+    name: string;
+    subjectId: string;
+    subjectName: string;
+    status: string;
+    confidence: number;
+    score: number;
+    unresolvedMistakes: number;
+    conceptualMistakes: number;
+    calculationMistakes: number;
+    isRevisionDue: boolean;
+    tier: string;
+    weightagePercent: number;
+  }[];
 
-  // Score each chapter using the multi-factor Priority Formula
-  const scored = chapters.map((c) => {
-    const isRevisionDue = c.status === 'revision_due';
-    const mistakeWeight = Math.log(1 + c.unresolvedMistakes) * 2.2;
-    const confidenceGap = ((100 - c.confidence) / 100) * 1.8;
-    const revisionBoost = isRevisionDue ? 3.0 : 0;
-    const examUrgency = input.daysToKeyExam ? Math.max(0.5, 10 / Math.max(1, input.daysToKeyExam)) : 1.0;
+  if (state && state.chapters.length > 0) {
+    // Live Academic Memory Pipeline
+    scoredCandidates = state.chapters.map((c) => ({
+      id: c.id,
+      name: c.name,
+      subjectId: c.subjectId,
+      subjectName: c.subjectName,
+      status: c.status,
+      confidence: c.confidence,
+      score: c.effectivePriorityScore,
+      unresolvedMistakes: c.mistakes.unresolved,
+      conceptualMistakes: c.mistakes.conceptual,
+      calculationMistakes: c.mistakes.calculation,
+      isRevisionDue: c.isRevisionDue,
+      tier: c.tier,
+      weightagePercent: c.weightagePercent,
+    }));
+  } else {
+    // Fallback static calculation
+    const chapters = getCurriculumChapters(input.track);
+    scoredCandidates = chapters.map((c) => {
+      const isRevisionDue = c.status === 'revision_due';
+      const mistakeWeight = Math.log(1 + c.unresolvedMistakes) * 2.2;
+      const confidenceGap = ((100 - c.confidence) / 100) * 1.8;
+      const revisionBoost = isRevisionDue ? 3.0 : 0;
+      const examUrgency = input.daysToKeyExam ? Math.max(0.5, 10 / Math.max(1, input.daysToKeyExam)) : 1.0;
+      const totalScore = (mistakeWeight + confidenceGap + revisionBoost) * examUrgency;
 
-    const totalScore = (mistakeWeight + confidenceGap + revisionBoost) * examUrgency;
-
-    return {
-      ...c,
-      score: totalScore,
-      isRevisionDue,
-    };
-  });
+      return {
+        id: c.id,
+        name: c.name,
+        subjectId: c.subjectId,
+        subjectName: c.subjectName,
+        status: c.status,
+        confidence: c.confidence,
+        score: totalScore,
+        unresolvedMistakes: c.unresolvedMistakes,
+        conceptualMistakes: 0,
+        calculationMistakes: 0,
+        isRevisionDue,
+        tier: 'tier2_core',
+        weightagePercent: 7,
+      };
+    });
+  }
 
   // Sort descending by priority score
-  scored.sort((a, b) => b.score - a.score);
+  scoredCandidates.sort((a, b) => b.score - a.score);
 
-  const isOlympiad = input.track === 'jee_nsep';
-  const topChapter = scored[0];
-
+  const topChapter = scoredCandidates[0];
   const suggestedTasks: SuggestedTask[] = [];
   let allocatedMinutes = 0;
 
-  // 1. Morning Slot: High-leverage concept / hard problem set (Peak cognitive window)
-  if (topChapter && allocatedMinutes + 50 <= maxRecommendedMinutes) {
-    suggestedTasks.push({
+  // Dynamic slot durations adjusted if fatigue risk is present
+  const morningMinutes = fatigueRisk ? 40 : 50;
+  const afternoonMinutes = fatigueRisk ? 35 : 40;
+  const eveningMinutes = fatigueRisk ? 35 : 50;
+  const nightMinutes = fatigueRisk ? 25 : 35;
+
+  // Helper to formulate task title tailored to mistake taxonomy
+  function getTaskDetails(c: typeof scoredCandidates[0], slot: TimeSlot) {
+    if (c.conceptualMistakes > 0) {
+      return {
+        title: isOlympiad
+          ? `${c.name}: First-Principles Concept Drill (${c.conceptualMistakes} conceptual errors)`
+          : `${c.name}: Deep Dive & Invariant Proofs (${c.conceptualMistakes} core logic gaps)`,
+        effort: (fatigueRisk ? 'medium' : 'high') as EffortLevel,
+        reason: `Targeting ${c.conceptualMistakes} conceptual root errors logged in your Mistake Book.`,
+      };
+    }
+    if (c.calculationMistakes > 0) {
+      return {
+        title: isOlympiad
+          ? `${c.name}: 12 Timed Precision Problems (Clock Speed)`
+          : `${c.name}: Implementation Speed Drill & Edge Case Handling`,
+        effort: 'medium' as EffortLevel,
+        reason: `Fixes ${c.calculationMistakes} calculation slips under simulated exam pressure.`,
+      };
+    }
+    if (c.isRevisionDue) {
+      return {
+        title: isOlympiad
+          ? `${c.name}: Spaced Revision Active Recall Drill`
+          : `${c.name}: System & Pattern Spaced Review`,
+        effort: 'medium' as EffortLevel,
+        reason: 'Scheduled by spaced repetition to prevent forgetting curve decay.',
+      };
+    }
+    if (c.tier === 'tier1_heavy') {
+      return {
+        title: isOlympiad
+          ? `${c.name}: High-Yield PYQ Drill (Advanced Problems)`
+          : `${c.name}: Architecture Sprint & Pattern Practice`,
+        effort: (slot === 'night' ? 'low' : fatigueRisk ? 'medium' : 'high') as EffortLevel,
+        reason: `Tier 1 high-yield chapter (~${c.weightagePercent}% exam weightage).`,
+      };
+    }
+    return {
       title: isOlympiad
-        ? `${topChapter.name}: 12 Advanced Problems (Multi-Concept Drills)`
-        : `${topChapter.name}: 2 Core Pattern Problems (Active Recall)`,
+        ? `${c.name}: Multi-Concept Practice Set`
+        : `${c.name}: Core Concepts & Problem Block`,
+      effort: 'medium' as EffortLevel,
+      reason: c.unresolvedMistakes > 0
+        ? `Has ${c.unresolvedMistakes} unresolved errors to clear.`
+        : 'Syllabus mastery progression.',
+    };
+  }
+
+  // 1. Morning Slot: Peak Cognitive Focus
+  if (topChapter && allocatedMinutes + morningMinutes <= maxRecommendedMinutes) {
+    const details = getTaskDetails(topChapter, 'morning');
+    suggestedTasks.push({
+      title: details.title,
       slot: 'morning',
-      effort: 'high',
-      estimatedMinutes: 50,
+      effort: details.effort,
+      estimatedMinutes: morningMinutes,
       priority: 1,
       chapterId: topChapter.id,
       chapterName: topChapter.name,
       subjectId: topChapter.subjectId,
       subjectName: topChapter.subjectName,
-      reason: topChapter.unresolvedMistakes > 0
-        ? `Has ${topChapter.unresolvedMistakes} unresolved errors; needs fresh morning focus.`
-        : 'High exam weightage concept.',
+      reason: details.reason,
     });
-    allocatedMinutes += 50;
+    allocatedMinutes += morningMinutes;
   }
 
-  // 2. Afternoon Slot: Secondary subject or theory consolidation
-  const secondSubject = scored.find((c) => c.subjectId !== topChapter?.subjectId) ?? scored[1];
-  if (secondSubject && allocatedMinutes + 40 <= maxRecommendedMinutes) {
+  // 2. Afternoon Slot: Cross-subject balance
+  const secondSubject =
+    scoredCandidates.find((c) => c.subjectId !== topChapter?.subjectId) ?? scoredCandidates[1];
+  if (secondSubject && allocatedMinutes + afternoonMinutes <= maxRecommendedMinutes) {
+    const details = getTaskDetails(secondSubject, 'afternoon');
     suggestedTasks.push({
       title: isOlympiad
-        ? `${secondSubject.name}: Formula & Conceptual Boundary Derivations`
-        : `${secondSubject.name}: Implementation & Architecture Sprint`,
+        ? `${secondSubject.name}: Formula & Conceptual Derivations`
+        : `${secondSubject.name}: Code Implementation Sprint`,
       slot: 'afternoon',
       effort: 'medium',
-      estimatedMinutes: 40,
+      estimatedMinutes: afternoonMinutes,
       priority: 2,
       chapterId: secondSubject.id,
       chapterName: secondSubject.name,
@@ -112,19 +220,22 @@ export function generateOptimalDayPlan(input: PlanningEngineInput): PlanningEngi
       subjectName: secondSubject.subjectName,
       reason: 'Cross-subject balance prevents cognitive saturation.',
     });
-    allocatedMinutes += 40;
+    allocatedMinutes += afternoonMinutes;
   }
 
-  // 3. Evening Slot: Spaced Revision or Challenging Problem Block
-  const revCandidate = scored.find((c) => c.isRevisionDue && !suggestedTasks.some((t) => t.chapterId === c.id)) ?? scored[2];
-  if (revCandidate && allocatedMinutes + 50 <= maxRecommendedMinutes) {
+  // 3. Evening Slot: Spaced Revision or Rigorous Problem Solving
+  const revCandidate =
+    scoredCandidates.find((c) => c.isRevisionDue && !suggestedTasks.some((t) => t.chapterId === c.id)) ??
+    scoredCandidates[2];
+  if (revCandidate && allocatedMinutes + eveningMinutes <= maxRecommendedMinutes) {
+    const details = getTaskDetails(revCandidate, 'evening');
     suggestedTasks.push({
-      title: isOlympiad
-        ? `${revCandidate.name}: Timed Exam Question Drill (High Rigor)`
-        : `${revCandidate.name}: Deep Work Block & Edge Case Testing`,
+      title: revCandidate.isRevisionDue
+        ? `${revCandidate.name}: Spaced Revision Active Recall`
+        : details.title,
       slot: 'evening',
-      effort: 'high',
-      estimatedMinutes: 50,
+      effort: fatigueRisk ? 'medium' : 'high',
+      estimatedMinutes: eveningMinutes,
       priority: 1,
       chapterId: revCandidate.id,
       chapterName: revCandidate.name,
@@ -132,34 +243,40 @@ export function generateOptimalDayPlan(input: PlanningEngineInput): PlanningEngi
       subjectName: revCandidate.subjectName,
       reason: revCandidate.isRevisionDue
         ? 'Scheduled by spaced repetition to prevent forgetting curve decay.'
-        : 'Deep focus slot before evening fatigue sets in.',
+        : details.reason,
     });
-    allocatedMinutes += 50;
+    allocatedMinutes += eveningMinutes;
   }
 
-  // 4. Night Slot: Low cognitive friction, review or quick summary (No heavy stress before bed)
-  const thirdSubject = scored.find((c) => !suggestedTasks.some((t) => t.subjectId === c.subjectId)) ?? scored[3];
-  if (thirdSubject && allocatedMinutes + 35 <= maxRecommendedMinutes) {
+  // 4. Night Slot: Low friction consolidation / sleep protection
+  const thirdSubject =
+    scoredCandidates.find((c) => !suggestedTasks.some((t) => t.subjectId === c.subjectId)) ??
+    scoredCandidates[3];
+  if (thirdSubject && allocatedMinutes + nightMinutes <= maxRecommendedMinutes) {
     suggestedTasks.push({
       title: isOlympiad
-        ? `${thirdSubject.name}: Quick Flashcard Revision & PYQ Check`
-        : `${thirdSubject.name}: Code Review & Debugging Documentation`,
+        ? `${thirdSubject.name}: Quick Flashcard Revision & Error Review`
+        : `${thirdSubject.name}: Code Review & Debugging Notes`,
       slot: 'night',
       effort: 'low',
-      estimatedMinutes: 35,
+      estimatedMinutes: nightMinutes,
       priority: 3,
       chapterId: thirdSubject.id,
       chapterName: thirdSubject.name,
       subjectId: thirdSubject.subjectId,
       subjectName: thirdSubject.subjectName,
-      reason: 'Low cognitive friction to protect sleep quality.',
+      reason: 'Low cognitive friction to protect recovery and sleep quality.',
     });
-    allocatedMinutes += 35;
+    allocatedMinutes += nightMinutes;
   }
 
-  const rationale = isOlympiad
-    ? `STEM & Olympiad Strategy: Anchored on ${topChapter?.name ?? 'Physics'} while morning cognitive energy is highest, scheduling active spaced revision in the evening, and keeping night review low-friction to protect sleep.`
-    : `Computer Science & Systems Strategy: Front-loads algorithm pattern recall early, gives an uninterrupted mid-day implementation block for PyTorch/Systems, and reserves night for documentation and reflection.`;
+  let rationale = isOlympiad
+    ? `STEM & Olympiad Strategy: Anchored on ${topChapter?.name ?? 'Physics'} during peak morning focus, balanced with active cross-subject problem solving in the evening, and light error review at night.`
+    : `Computer Science & Systems Strategy: Front-loads core algorithmic patterns early, dedicates mid-day to architecture/PyTorch implementation, and reserves night for documentation and reflection.`;
+
+  if (fatigueRisk) {
+    rationale += ` 🛡️ Fatigue Protection Active: Workload calibrated down to ${Math.round(allocatedMinutes / 60 * 10) / 10}h based on recent sleep/energy trends.`;
+  }
 
   return {
     suggestedTasks,
@@ -168,5 +285,6 @@ export function generateOptimalDayPlan(input: PlanningEngineInput): PlanningEngi
     rationale,
     primaryFocus: topChapter?.name ?? 'Core Concept Mastery',
     overloadRisk: allocatedMinutes > maxRecommendedMinutes,
+    burnoutNotice: cognitive?.overloadWarning ?? (fatigueRisk ? 'Fatigue shield applied: slots shortened to protect sleep.' : null),
   };
 }
