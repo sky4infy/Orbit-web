@@ -5,6 +5,14 @@
 
 ---
 
+## 📚 Official User Guide
+Complete tab-by-tab walkthrough and executive manual available in multiple formats:
+* 📄 **[Download Official Master PDF (`orbit_guide.pdf`)](./orbit_guide.pdf)** — Publication-grade 5-page A4 executive manual.
+* 📝 **[Read Markdown Guide (`orbit_guide.md`)](./orbit_guide.md)** — Clean GitHub-native documentation.
+* 🌐 **[View Printable HTML (`orbit_guide.html`)](./orbit_guide.html)** — Formatted with CSS print styling.
+
+---
+
 ## 🏛 System Architecture
 
 Orbit is engineered with a **dual-layer, local-first architecture**. It pairs zero-latency offline client state (IndexedDB via Dexie.js) with real-time multi-device cloud synchronization and relational integrity (PostgreSQL via Supabase).
@@ -91,10 +99,30 @@ Consolidates student velocity, active backlogs, mistake taxonomies (conceptual v
 * Classifies errors into rigorous cognitive categories: `Conceptual`, `Calculation`, `Careless`, `Application`, or `Time Management`.
 * Automatically enrolls the underlying syllabus chapter into the spaced repetition queue upon logging an error.
 
-### 5. Multi-Curriculum Tracks
-Pre-configured, out-of-the-box syllabus taxonomies:
-* **JEE / NSEP Track:** Physics, Chemistry, Mathematics with JEE exam weightage tiers (High, Medium, Low).
-* **College CS & AI-ML Track:** Data Structures & Algorithms, Machine Learning & Deep Learning, Database Management Systems, Operating Systems & Networks.
+### 5. Strict Single-Track Isolation
+* Users are assigned strictly to **one** academic track at a time:
+  * **STEM & Olympiad Track:** Physics, Chemistry, and Mathematics with weightage tiers (High, Medium, Low).
+  * **College CS & AI-ML Track:** Data Structures & Algorithms, Machine Learning & Deep Learning, DBMS, Operating Systems & Networks.
+* Ensures total isolation: switching tracks dynamically filters your chapter progress, active recall queues, and daily tasks with zero cross-contamination.
+
+### 6. Multi-Surface Task Undo Protection
+* **Direct Checkmark Toggle:** Accidentally marked a task done? Simply tap the green checkmark again — it immediately restores the task back to active and recalculates the daily Orbit ring.
+* **Instant Undo Toast:** A 6-second bottom notification bar provides an instant "Undo" button for accidental misclicks.
+
+---
+
+## 🔮 Product Roadmap (Upcoming Modules)
+
+Orbit is built with clean architectural boundaries to seamlessly integrate the following planned modules:
+
+| Feature | Category | Planned Capability |
+| :--- | :--- | :--- |
+| **Deep Reasoning Mentor** | AI / LLM | Connect Claude / Gemini / DeepSeek API to diagnose conceptual blindspots directly from logged mistake patterns after initial data accumulation. |
+| **OCR Mistake Ingestion** | Vision AI | Snap photos of handwritten scratchwork or test questions; auto-converts math into LaTeX equations and auto-detects calculation slips. |
+| **Focus Duration Telemetry** | Analytics | Uses `study_session` logs to detect cognitive efficiency drop-offs (e.g. *"Focus fades after 75 minutes"*). |
+| **Peer Focus Circles** | Social Accountability | Silent co-working rooms leveraging `orbit_partner_name` for mutual Pomodoro accountability. |
+| **Anki Deck Export** | Retention Sync | 1-click export of unaddressed mistakes and key formulas into standard Anki `.apkg` files for mobile flashcard review. |
+| **Mock Test Simulator** | Exam Simulation | Timed full-screen exam simulation replicating the exact NTA JEE / GATE computer terminal interface. |
 
 ---
 
