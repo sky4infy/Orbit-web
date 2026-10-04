@@ -1,13 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Sparkles, ChevronDown, ChevronUp, Zap, Clock, Check, X, ArrowRight } from 'lucide-react';
+import { Bot, Sparkles, ChevronDown, ChevronUp, Zap, Clock, Check, X, ArrowRight, ShieldAlert, Target } from 'lucide-react';
 import type { TrackType } from '@/types/database.types';
 import type { TaskWithChapter } from '@/api/tasks';
 import { generateOptimalDayPlan, type PlanningEngineOutput, type SuggestedTask } from '@/lib/planningEngine';
+import { getUnifiedAcademicState, type UnifiedStudentState } from '@/lib/academicState';
 
 interface Props {
+  userId?: string;
   track: TrackType;
   date: string;
   tasks: TaskWithChapter[];
@@ -16,20 +18,34 @@ interface Props {
   onOpenFocusTimer?: (task: TaskWithChapter | null) => void;
 }
 
-export function AiMentorCard({ track, date, tasks, chapters, onApplyPlan, onOpenFocusTimer }: Props) {
+export function AiMentorCard({ userId = '', track, date, tasks, chapters, onApplyPlan, onOpenFocusTimer }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
   const [calibrationModalOpen, setCalibrationModalOpen] = useState(false);
   const [calibratedPlan, setCalibratedPlan] = useState<PlanningEngineOutput | null>(null);
+  const [academicState, setAcademicState] = useState<UnifiedStudentState | null>(null);
 
   const isOlympiadTrack = track === 'jee_nsep';
 
-  // Find highest priority weak chapters
-  const weakChapters = [...chapters]
-    .filter((c) => c.unresolvedMistakes > 0 || c.confidence < 60)
-    .sort((a, b) => b.unresolvedMistakes - a.unresolvedMistakes);
+  useEffect(() => {
+    getUnifiedAcademicState(userId, track)
+      .then((st) => setAcademicState(st))
+      .catch((err) => console.warn('Failed to fetch academic state for mentor card:', err));
+  }, [userId, track, tasks]);
 
-  const topWeakChapter = weakChapters[0]?.name ?? (isOlympiadTrack ? 'Rotational Dynamics' : 'Dynamic Programming');
+  // Find highest priority weak chapters from live academic memory or props fallback
+  const topWeakChapter = academicState?.chapters[0]?.name ?? (
+    chapters.find((c) => c.unresolvedMistakes > 0 || c.confidence < 60)?.name ??
+    (isOlympiadTrack ? 'Rotational Dynamics' : 'Dynamic Programming')
+  );
+
+  const totalUnresolvedMistakes =
+    academicState?.summary.totalUnresolvedMistakes ??
+    chapters.reduce((sum, c) => sum + c.unresolvedMistakes, 0);
+
+  const conceptualCount = academicState?.summary.conceptualMistakesCount ?? 0;
+  const targetExam = academicState?.targetExam;
+  const cognitive = academicState?.cognitiveProfile;
 
   // Calculate planned minutes
   const totalPlannedMinutes = tasks.reduce((sum, t) => sum + (t.estimated_minutes ?? 45), 0);
@@ -40,9 +56,16 @@ export function AiMentorCard({ track, date, tasks, chapters, onApplyPlan, onOpen
     ? 'STEM & Olympiad Strategic Calibration'
     : 'Computer Science & Systems Calibration';
 
-  const primaryRecommendation = isOlympiadTrack
-    ? `You have ${weakChapters.length > 0 ? weakChapters.length : '3'} key concept focus areas. Priority #1 is ${topWeakChapter} (focus on multi-concept analytical problems). Keep evening self-study to 3.5 hrs max so you get 7.5 hrs of sleep.`
-    : `Upcoming contest and architecture sprint ahead. Priority #1 is ${topWeakChapter} (review core pattern variations). Block a 90m deep work session for Systems/PyTorch before midnight.`;
+  let primaryRecommendation = '';
+  if (cognitive?.fatigueRisk) {
+    primaryRecommendation = `🛡️ Fatigue Shield Active: ${cognitive.reportedSleep}h sleep recorded (7-day avg: ${cognitive.sevenDayAvgSleep}h). Orbit has scaled recommended study to ${cognitive.recommendedStudyHours}h to protect cognitive recovery. Priority #1 is clearing ${topWeakChapter} without overworking.`;
+  } else if (targetExam && targetExam.daysRemaining <= 30) {
+    primaryRecommendation = `Target Milestone: ${targetExam.name} is in ${targetExam.daysRemaining} days. Priority #1 is ${topWeakChapter} (${totalUnresolvedMistakes} active errors to clear). Keep evening work focused on timed drills.`;
+  } else if (isOlympiadTrack) {
+    primaryRecommendation = `You have ${totalUnresolvedMistakes} active error points logged (${conceptualCount} conceptual). Priority #1 is ${topWeakChapter} (focus on multi-concept analytical derivations). Keep evening self-study to 3.5 hrs max so you get 7.5 hrs of sleep.`;
+  } else {
+    primaryRecommendation = `Upcoming contest and architecture sprint ahead. Priority #1 is ${topWeakChapter} (review core pattern variations). Block an uninterrupted deep work session for Systems/PyTorch before midnight.`;
+  }
 
   const mentorQuestions = isOlympiadTrack
     ? [
@@ -76,13 +99,11 @@ export function AiMentorCard({ track, date, tasks, chapters, onApplyPlan, onOpen
 
   function handleOpenCalibration() {
     const plan = generateOptimalDayPlan({
-      userId: 'local-user',
+      userId: userId || 'local-user',
       date,
       track,
-      availableHours: 4.5,
-      energyLevel: 4,
-      daysToKeyExam: isOlympiadTrack ? 45 : 4,
       existingTasks: tasks,
+      academicState: academicState ?? undefined,
     });
     setCalibratedPlan(plan);
     setCalibrationModalOpen(true);
@@ -134,7 +155,12 @@ export function AiMentorCard({ track, date, tasks, chapters, onApplyPlan, onOpen
           {/* Diagnostic Meta Bar */}
           <div className="mt-3 flex items-center justify-between border-t border-white/5 pt-2.5 text-[11px] text-paper/50 font-mono">
             <span>Target Load: {plannedHours} hrs</span>
-            <span>Weak Focus: {topWeakChapter}</span>
+            <span>Focus: {topWeakChapter}</span>
+            {targetExam && (
+              <span className="text-amber">
+                {targetExam.daysRemaining}d to {targetExam.name.split(' ')[0]}
+              </span>
+            )}
           </div>
         </div>
 
