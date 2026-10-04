@@ -5,29 +5,41 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, BookOpen, Plus } from 'lucide-react';
 import type { TrackType } from '@/types/database.types';
 import { addCustomSubject } from '@/lib/curriculumData';
+import { createCustomSubject } from '@/api/journey';
 
 interface Props {
+  userId?: string | null;
   track: TrackType;
   open: boolean;
   onClose: () => void;
   onCreated: (newSubject: { id: string; name: string; track: TrackType }) => void;
 }
 
-export function AddSubjectModal({ track, open, onClose, onCreated }: Props) {
+export function AddSubjectModal({ userId, track, open, onClose, onCreated }: Props) {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
       setError('Please enter a subject name');
       return;
     }
-    const created = addCustomSubject(name.trim(), track);
-    setName('');
-    setError(null);
-    onCreated(created);
-    onClose();
+    setSaving(true);
+    try {
+      const created = userId
+        ? await createCustomSubject(userId, name.trim(), track)
+        : addCustomSubject(name.trim(), track);
+      setName('');
+      setError(null);
+      onCreated(created);
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Could not save subject');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (

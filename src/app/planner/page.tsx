@@ -28,7 +28,10 @@ import { CalibratePlanModal } from '@/components/CalibratePlanModal';
 import { AiMentorCard } from '@/components/AiMentorCard';
 import { getDueRevisions, type DueRevisionRow } from '@/api/revisions';
 import { RevisionSession } from '@/components/RevisionSession';
-import { getCurriculumChapters, getStarterTasks } from '@/lib/curriculumData';
+import { syncAllUserData } from '@/lib/syncService';
+import { getCurriculumChapters, getStarterTasks, resolveChapterId } from '@/lib/curriculumData';
+import { generateUuid } from '@/lib/uuid';
+import { supabase } from '@/lib/supabase/client';
 import { saveLocalTask } from '@/lib/db';
 import { Moon, Clock, Sparkles, Flame, Trophy, Plus, RotateCcw, ArrowRight } from 'lucide-react';
 
@@ -70,6 +73,7 @@ export default function PlannerPage() {
   const [streak, setStreak] = useState(4);
   const [level, setLevel] = useState<LevelInfo>({ level: 2, xp: 12, xpIntoLevel: 2, xpForNextLevel: 10 });
   const [loading, setLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Modals state
   const [addTaskOpen, setAddTaskOpen] = useState(false);
@@ -90,7 +94,7 @@ export default function PlannerPage() {
     if (saved) setTrack(saved);
   }, []);
 
-  function withTimeout<T>(promise: Promise<T>, ms = 1200): Promise<T> {
+  function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Network timeout')), ms)),
@@ -101,12 +105,12 @@ export default function PlannerPage() {
     setLoading(true);
     try {
       const results = await Promise.allSettled([
-        withTimeout(getTasksForDate(uid, date)),
-        withTimeout(getChaptersOverview(activeTrack)),
-        withTimeout(getStreak(uid)),
-        withTimeout(getLevelInfo(uid)),
-        withTimeout(getDisplayName(uid)),
-        withTimeout(getDueRevisions(uid, date, activeTrack)),
+        withTimeout(getTasksForDate(uid, date), 6000),
+        withTimeout(getChaptersOverview(activeTrack), 6000),
+        withTimeout(getStreak(uid), 6000),
+        withTimeout(getLevelInfo(uid), 6000),
+        withTimeout(getDisplayName(uid), 6000),
+        withTimeout(getDueRevisions(uid, date, activeTrack), 6000),
       ]);
 
       const [taskRows, chapterRows, streakCount, levelInfo, displayName, dueRevRows] = results;
@@ -115,9 +119,9 @@ export default function PlannerPage() {
         setDueRevisions(dueRevRows.value);
       }
 
-      if (taskRows.status === 'fulfilled' && taskRows.value.length > 0) {
+      if (taskRows.status === 'fulfilled') {
         setTasks(taskRows.value);
-      } else {
+      } else if (!uid) {
         setTasks(getStarterTasks(activeTrack, date));
       }
 
@@ -140,18 +144,10 @@ export default function PlannerPage() {
       if (levelInfo.status === 'fulfilled') setLevel(levelInfo.value);
       if (displayName.status === 'fulfilled') setName(displayName.value);
     } catch (err) {
-      console.error('Failed to load planner, using fallback curriculum:', err);
-      setTasks(getStarterTasks(activeTrack, date));
-      const fallback = getCurriculumChapters(activeTrack).map((c) => ({
-        id: c.id,
-        name: c.name,
-        subjectId: c.subjectId,
-        subjectName: c.subjectName,
-        confidence: c.confidence,
-        status: c.status,
-        unresolvedMistakes: c.unresolvedMistakes,
-      }));
-      setChapters(fallback);
+      console.error('Failed to load planner:', err);
+      if (!uid) {
+        setTasks(getStarterTasks(activeTrack, date));
+      }
     } finally {
       setLoading(false);
     }
@@ -175,12 +171,43 @@ export default function PlannerPage() {
       }
       return;
     }
+
+    // Trigger cloud synchronization in the background
+    syncAllUserData(userId).then(() => {
+      load(userId, track);
+    });
+
     load(userId, track);
   }, [userId, authLoading, load, track, date]);
+
+  // Listen for sync completions to update planner seamlessly
+  useEffect(() => {
+    if (!userId) return;
+    const handleSync = () => load(userId, track);
+    window.addEventListener('orbit:sync_completed', handleSync);
+    return () => window.removeEventListener('orbit:sync_completed', handleSync);
+  }, [userId, load, track]);
 
   const refresh = useCallback(() => {
     if (userId) load(userId, track);
   }, [userId, load, track]);
+
+  const handleManualSync = async () => {
+    if (!userId || isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await syncAllUserData(userId);
+      await load(userId, track);
+      setToast({
+        id: `sync-${Date.now()}`,
+        message: 'Cloud synchronized across all your devices!',
+      });
+    } catch (e) {
+      console.error('Manual sync failed:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   async function refreshGamification() {
     if (!userId) return;
@@ -276,24 +303,28 @@ export default function PlannerPage() {
   const now = new Date();
 
   async function handleApplyCalibratedPlan(suggested: any[]) {
-    const newTasks: TaskWithChapter[] = suggested.map((s, idx) => ({
-      id: `calibrated-${Date.now()}-${idx}`,
-      title: s.title,
-      scheduled_date: date,
-      time_slot: s.slot,
-      effort_level: s.effort,
-      priority: s.priority,
-      position: idx,
-      status: 'pending',
-      incomplete_reason: null,
-      estimated_minutes: s.estimatedMinutes,
-      actual_minutes: null,
-      chapter: {
-        id: s.chapterId,
-        name: s.chapterName,
-        subject: { id: s.subjectId, name: s.subjectName },
-      },
-    }));
+    const newTasks: TaskWithChapter[] = suggested.map((s, idx) => {
+      const realId = generateUuid();
+      const realChapId = resolveChapterId(s.chapterId);
+      return {
+        id: realId,
+        title: s.title,
+        scheduled_date: date,
+        time_slot: s.slot,
+        effort_level: s.effort,
+        priority: s.priority,
+        position: idx,
+        status: 'pending',
+        incomplete_reason: null,
+        estimated_minutes: s.estimatedMinutes,
+        actual_minutes: null,
+        chapter: {
+          id: realChapId,
+          name: s.chapterName,
+          subject: { id: s.subjectId, name: s.subjectName },
+        },
+      };
+    });
     setTasks(newTasks);
 
     // Persist immediately into local Dexie
@@ -315,6 +346,28 @@ export default function PlannerPage() {
         created_at: new Date().toISOString(),
         completed_at: null,
       });
+
+      // Push to Supabase if logged in
+      if (userId) {
+        supabase
+          .from('task')
+          .upsert({
+            id: t.id,
+            user_id: userId,
+            chapter_id: t.chapter?.id ?? '',
+            title: t.title,
+            scheduled_date: date,
+            time_slot: t.time_slot,
+            effort_level: t.effort_level,
+            priority: t.priority,
+            position: t.position,
+            status: 'pending',
+            estimated_minutes: t.estimated_minutes,
+          } as never)
+          .then(({ error }) => {
+            if (error) console.error('Error saving calibrated task to cloud:', error);
+          });
+      }
     }
 
     setToast({
@@ -357,13 +410,16 @@ export default function PlannerPage() {
             <Clock size={16} />
           </button>
 
-          {/* Evening Reflection Button */}
+          {/* Cloud Sync Button */}
           <button
-            onClick={() => setReflectionOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-paper/70 transition hover:border-amber/30 hover:bg-amber/10 hover:text-amber"
-            title="Evening Reflection"
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className={`flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-paper/70 transition hover:border-amber/30 hover:bg-amber/10 hover:text-amber ${
+              isSyncing ? 'text-amber' : ''
+            }`}
+            title={isSyncing ? 'Synchronizing with cloud...' : 'Sync with cloud across devices'}
           >
-            <Moon size={16} />
+            <RotateCcw size={15} className={isSyncing ? 'animate-spin text-amber' : ''} />
           </button>
         </div>
       </header>

@@ -3,7 +3,8 @@ import { addDays, format } from 'date-fns';
 import { logEvent } from '@/api/events';
 import { calculateAdaptiveInterval, type ReviewGrade } from '@/lib/spacedRepetition';
 import { getLocalRevisions, saveLocalRevision, type LocalRevision } from '@/lib/db';
-import { getCurriculumChapters } from '@/lib/curriculumData';
+import { getCurriculumChapters, resolveChapterId } from '@/lib/curriculumData';
+import { generateUuid } from '@/lib/uuid';
 
 export interface DueRevisionRow {
   id: string;
@@ -168,18 +169,19 @@ export async function getDueRevisions(userId: string, onOrBefore: string, active
 
 /** Start tracking revision for a chapter that doesn't have a revision row yet. */
 export async function ensureRevisionExists(userId: string, chapterId: string) {
+  const validChapterId = resolveChapterId(chapterId);
   // 1. Check local Dexie first
   const localList = await getLocalRevisions(userId);
-  const existingLocal = localList.find((r) => r.chapter_id === chapterId);
+  const existingLocal = localList.find((r) => r.chapter_id === validChapterId || r.chapter_id === chapterId);
   if (existingLocal) return existingLocal.id;
 
-  const newId = `rev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const newId = generateUuid();
   const today = format(new Date(), 'yyyy-MM-dd');
 
   const newRevision: LocalRevision = {
     id: newId,
     user_id: userId,
-    chapter_id: chapterId,
+    chapter_id: validChapterId,
     due_date: today,
     interval_days: 1,
     review_count: 0,
@@ -194,19 +196,24 @@ export async function ensureRevisionExists(userId: string, chapterId: string) {
 
   // Background cloud sync
   if (userId) {
-    Promise.resolve(
-      supabase
-        .from('revision')
-        .insert({
-          id: newId,
-          user_id: userId,
-          chapter_id: chapterId,
-          due_date: today,
-          interval_days: 1,
-        } as never)
-        .select('id')
-        .single()
-    ).catch(() => {});
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from('revision')
+          .insert({
+            id: newId,
+            user_id: userId,
+            chapter_id: validChapterId,
+            due_date: today,
+            interval_days: 1,
+          } as never)
+          .select('id')
+          .single();
+        if (error) console.error('Supabase revision insert error:', error);
+      } catch (err) {
+        console.error('Supabase revision insert exception:', err);
+      }
+    })();
   }
 
   return newId;

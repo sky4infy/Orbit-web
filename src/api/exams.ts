@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase/client';
 import type { ExamReadinessRow, ExamType } from '@/types/database.types';
 import { getLocalExams, saveLocalExam, deleteLocalExam, type LocalExam } from '@/lib/db';
-import { getCurriculumChapters } from '@/lib/curriculumData';
+import { getCurriculumChapters, resolveChapterId } from '@/lib/curriculumData';
+import { generateUuid } from '@/lib/uuid';
 
 export async function getExams(userId: string = ''): Promise<ExamReadinessRow[]> {
   // 1. Read from IndexedDB first
@@ -52,7 +53,8 @@ export async function createExam(
   examDate: string,
   chapterIds: string[]
 ) {
-  const newId = `exam-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const newId = generateUuid();
+  const validChapterIds = chapterIds.map(resolveChapterId);
   const localExam: LocalExam = {
     id: newId,
     user_id: userId,
@@ -60,7 +62,7 @@ export async function createExam(
     exam_type: examType,
     exam_date: examDate,
     created_at: new Date().toISOString(),
-    chapter_ids: chapterIds,
+    chapter_ids: validChapterIds,
   };
 
   // Instant local save
@@ -68,21 +70,26 @@ export async function createExam(
 
   // Background cloud push
   if (userId) {
-    Promise.resolve(
-      supabase
-        .from('exam')
-        .insert({ id: newId, user_id: userId, name, exam_type: examType, exam_date: examDate } as never)
-        .select()
-        .single()
-    )
-      .then(async () => {
-        if (chapterIds.length > 0) {
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from('exam')
+          .insert({ id: newId, user_id: userId, name, exam_type: examType, exam_date: examDate } as never)
+          .select()
+          .single();
+        if (error) {
+          console.error('Cloud exam insert error:', error);
+          return;
+        }
+        if (validChapterIds.length > 0) {
           await supabase
             .from('exam_chapter')
-            .insert(chapterIds.map((chapter_id) => ({ exam_id: newId, chapter_id })) as never);
+            .insert(validChapterIds.map((chapter_id) => ({ exam_id: newId, chapter_id })) as never);
         }
-      })
-      .catch(() => {});
+      } catch (err) {
+        console.error('Cloud exam insert exception:', err);
+      }
+    })();
   }
 
   return { id: newId };

@@ -146,13 +146,22 @@ export const CHAPTER_WEIGHTAGES: Record<string, ChapterWeightageInfo> = {
   'cs-core-1': { tier: 'tier1_heavy', weightagePercent: 10 }, // OS Concurrency & Semaphores
 };
 
+import { LEGACY_CHAPTER_MAP } from '@/lib/curriculumData';
+
+const REVERSE_LEGACY_MAP: Record<string, string> = Object.entries(LEGACY_CHAPTER_MAP).reduce((acc, [k, v]) => {
+  acc[v] = k;
+  return acc;
+}, {} as Record<string, string>);
+
 export function getChapterWeightage(chapterId: string): ChapterWeightageInfo {
-  return (
-    CHAPTER_WEIGHTAGES[chapterId] ?? {
-      tier: 'tier2_core',
-      weightagePercent: 7,
-    }
-  );
+  const direct = CHAPTER_WEIGHTAGES[chapterId];
+  if (direct) return direct;
+  const legacyKey = REVERSE_LEGACY_MAP[chapterId];
+  if (legacyKey && CHAPTER_WEIGHTAGES[legacyKey]) return CHAPTER_WEIGHTAGES[legacyKey];
+  return {
+    tier: 'tier2_core',
+    weightagePercent: 7,
+  };
 }
 
 // ============================================================

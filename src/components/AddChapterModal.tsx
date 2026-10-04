@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Layers, Plus } from 'lucide-react';
 import type { ChapterStatus, TrackType, SubjectProgressRow } from '@/types/database.types';
 import { addCustomChapter, computeConfidence } from '@/lib/curriculumData';
+import { createCustomChapter } from '@/api/journey';
 
 interface Props {
+  userId?: string | null;
   subjects: { subject_id: string; subject_name: string }[];
   defaultSubjectId?: string | null;
   track: TrackType;
@@ -24,6 +26,7 @@ const STATUS_OPTIONS: { value: ChapterStatus; label: string }[] = [
 ];
 
 export function AddChapterModal({
+  userId,
   subjects,
   defaultSubjectId,
   track,
@@ -35,13 +38,14 @@ export function AddChapterModal({
   const [name, setName] = useState('');
   const [status, setStatus] = useState<ChapterStatus>('not_started');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Sync defaultSubjectId if provided
   if (defaultSubjectId && subjectId !== defaultSubjectId && subjects.some((s) => s.subject_id === defaultSubjectId)) {
     setSubjectId(defaultSubjectId);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
       setError('Please enter a chapter name');
@@ -53,19 +57,30 @@ export function AddChapterModal({
       return;
     }
 
-    addCustomChapter({
-      name: name.trim(),
-      subjectId: currentSub.subject_id,
-      subjectName: currentSub.subject_name,
-      track,
-      status,
-      confidence: computeConfidence(status, 0),
-    });
+    setSaving(true);
+    try {
+      if (userId) {
+        await createCustomChapter(userId, currentSub.subject_id, name.trim(), track, status);
+      } else {
+        addCustomChapter({
+          name: name.trim(),
+          subjectId: currentSub.subject_id,
+          subjectName: currentSub.subject_name,
+          track,
+          status,
+          confidence: computeConfidence(status, 0),
+        });
+      }
 
-    setName('');
-    setError(null);
-    onCreated();
-    onClose();
+      setName('');
+      setError(null);
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Could not save chapter');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (

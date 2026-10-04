@@ -20,7 +20,7 @@ export interface ChapterOverview {
  */
 export async function getChaptersOverview(track?: string): Promise<ChapterOverview[]> {
   let query = supabase.from('my_chapter_status').select('*');
-  if (track) {
+  if (track && track !== 'all') {
     query = query.eq('track', track);
   }
   const { data, error } = await query;

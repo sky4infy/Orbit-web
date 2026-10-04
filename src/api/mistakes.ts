@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase/client';
 import type { Mistake, Difficulty, MistakeType } from '@/types/database.types';
 import { logEvent } from '@/api/events';
 import { ensureRevisionExists } from '@/api/revisions';
+import { generateUuid } from '@/lib/uuid';
+import { resolveChapterId } from '@/lib/curriculumData';
 import {
   getLocalMistakes,
   addLocalMistake,
@@ -29,11 +31,12 @@ export async function logMistake(mistake: {
   difficulty: Difficulty;
   description?: string;
 }) {
-  const newId = `mistake-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const newId = generateUuid();
+  const validChapterId = resolveChapterId(mistake.chapter_id);
   const localM: LocalMistake = {
     id: newId,
     user_id: mistake.user_id,
-    chapter_id: mistake.chapter_id,
+    chapter_id: validChapterId,
     mistake_type: mistake.mistake_type,
     difficulty: mistake.difficulty,
     description: mistake.description ?? '',
@@ -45,25 +48,28 @@ export async function logMistake(mistake: {
   await addLocalMistake(localM);
 
   // 2. Automatically enroll chapter in Spaced Repetition queue
-  ensureRevisionExists(mistake.user_id, mistake.chapter_id).catch(() => {});
+  ensureRevisionExists(mistake.user_id, validChapterId).catch(() => {});
 
   // 3. Background cloud sync
   if (mistake.user_id) {
-    Promise.resolve(
-      supabase
-        .from('mistake')
-        .insert({ ...mistake, id: newId, resolved: false } as never)
-        .select()
-        .single()
-    ).catch(() => {});
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from('mistake')
+          .insert({ ...mistake, id: newId, chapter_id: validChapterId, resolved: false } as never)
+          .select()
+          .single();
+        if (error) console.error('Supabase mistake insert error:', error);
+      } catch (err) {
+        console.error('Supabase mistake exception:', err);
+      }
+    })();
 
-    Promise.resolve(
-      logEvent(mistake.user_id, 'mistake_logged', {
-        chapter_id: mistake.chapter_id,
-        difficulty: mistake.difficulty,
-        mistake_type: mistake.mistake_type,
-      })
-    ).catch(() => {});
+    logEvent(mistake.user_id, 'mistake_logged', {
+      chapter_id: validChapterId,
+      difficulty: mistake.difficulty,
+      mistake_type: mistake.mistake_type,
+    }).catch(() => {});
   }
 
   return localM;

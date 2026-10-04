@@ -12,7 +12,7 @@ import type {
   ExamType,
   TrackType,
 } from '@/types/database.types';
-import { getCurriculumChapters, getStarterTasks } from '@/lib/curriculumData';
+import { getCurriculumChapters, getStarterTasks, resolveChapterId } from '@/lib/curriculumData';
 
 export interface LocalTask {
   id: string;
@@ -137,43 +137,17 @@ export async function getLocalTasksForDate(userId: string, date: string, track: 
     const chapters = getCurriculumChapters('all');
     const chapterMap = new Map(chapters.map((c) => [c.id, c]));
 
-    // If first time accessing this date and empty, initialize with rich starter missions
+    // If empty: for unauthenticated guest, return starters in memory; for logged in user, return []
     if (list.length === 0) {
-      const starters = getStarterTasks(track, date);
-      const inserted: LocalTask[] = [];
-      for (const st of starters) {
-        const localT: LocalTask = {
-          id: st.id,
-          user_id: userId,
-          chapter_id: st.chapter?.id ?? 'jee-phy-1',
-          title: st.title,
-          scheduled_date: date,
-          time_slot: st.time_slot,
-          effort_level: st.effort_level,
-          priority: st.priority,
-          position: st.position,
-          status: st.status,
-          incomplete_reason: st.incomplete_reason,
-          estimated_minutes: st.estimated_minutes,
-          actual_minutes: st.actual_minutes,
-          created_at: new Date().toISOString(),
-          completed_at: null,
-        };
-        await db.tasks.put(localT);
-        inserted.push(localT);
+      if (!userId) {
+        return getStarterTasks(track, date);
       }
-
-      return inserted.map((t) => {
-        const chap = chapterMap.get(t.chapter_id);
-        return {
-          ...t,
-          chapter: chap ? { id: chap.id, name: chap.name, subject: { id: chap.subjectId, name: chap.subjectName } } : null,
-        };
-      });
+      return [];
     }
 
     return list.map((t) => {
-      const chap = chapterMap.get(t.chapter_id);
+      const resolvedChapId = resolveChapterId(t.chapter_id);
+      const chap = chapterMap.get(resolvedChapId) || chapterMap.get(t.chapter_id);
       return {
         ...t,
         chapter: chap ? { id: chap.id, name: chap.name, subject: { id: chap.subjectId, name: chap.subjectName } } : null,

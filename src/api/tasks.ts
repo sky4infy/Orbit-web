@@ -1,7 +1,9 @@
 import { supabase } from '@/lib/supabase/client';
 import { addDays, format } from 'date-fns';
-import type { Task, TaskStatus, IncompleteReason, TimeSlot, EffortLevel } from '@/types/database.types';
+import type { Task, TaskStatus, IncompleteReason, TimeSlot, EffortLevel, TrackType } from '@/types/database.types';
 import { logEvent } from '@/api/events';
+import { generateUuid, isUuid } from '@/lib/uuid';
+import { resolveChapterId } from '@/lib/curriculumData';
 import {
   db,
   getLocalTasksForDate,
@@ -38,34 +40,30 @@ export interface DayOverview {
 }
 
 export async function getTasksForDate(userId: string, date: string): Promise<TaskWithChapter[]> {
-  // 1. Local-First: Read immediately from IndexedDB (0ms latency, never sleeps)
-  const activeTrack = (typeof window !== 'undefined' ? localStorage.getItem('orbit_active_track') : 'jee_nsep') as any;
-  const localList = await getLocalTasksForDate(userId, date, activeTrack || 'jee_nsep');
+  const activeTrack = (typeof window !== 'undefined' ? localStorage.getItem('orbit_active_track') : 'jee_nsep') as TrackType || 'jee_nsep';
 
-  // 2. Background cloud sync (if Supabase is connected & active)
+  // 1. If user is authenticated, query Supabase cloud first
   if (userId) {
     try {
-      const { data, error } = await Promise.race([
-        supabase
-          .from('task')
-          .select(
-            `id, title, scheduled_date, time_slot, effort_level, priority, position, status,
-             incomplete_reason, estimated_minutes, actual_minutes,
-             chapter:chapter_id ( id, name, subject:subject_id ( id, name ) )`
-          )
-          .eq('user_id', userId)
-          .eq('scheduled_date', date)
-          .order('time_slot', { ascending: true })
-          .order('position', { ascending: true }),
-        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 800)),
-      ]);
+      const { data, error } = await supabase
+        .from('task')
+        .select(
+          `id, title, scheduled_date, time_slot, effort_level, priority, position, status,
+           incomplete_reason, estimated_minutes, actual_minutes,
+           chapter:chapter_id ( id, name, subject:subject_id ( id, name ) )`
+        )
+        .eq('user_id', userId)
+        .eq('scheduled_date', date)
+        .order('time_slot', { ascending: true })
+        .order('position', { ascending: true });
 
-      if (!error && data && data.length > 0) {
-        for (const d of data) {
+      if (!error && data) {
+        // Cache to Dexie
+        for (const d of (data as any[])) {
           await saveLocalTask({
             id: d.id,
             user_id: userId,
-            chapter_id: d.chapter?.id ?? '',
+            chapter_id: (d.chapter as any)?.id ?? '',
             title: d.title,
             scheduled_date: d.scheduled_date,
             time_slot: d.time_slot,
@@ -80,21 +78,69 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
             completed_at: d.status === 'completed' ? new Date().toISOString() : null,
           });
         }
-        return data as unknown as TaskWithChapter[];
+
+        if (data.length > 0) {
+          return data as unknown as TaskWithChapter[];
+        }
+
+        // Supabase has 0 tasks on this date.
+        // Check if there are local offline tasks in IndexedDB that need syncing (e.g. created on phone)
+        const localList = await getLocalTasksForDate(userId, date, activeTrack);
+        if (localList.length > 0) {
+          for (const t of localList) {
+            const realId = isUuid(t.id) ? t.id : generateUuid();
+            const realChapId = resolveChapterId(t.chapter?.id ?? (t as any).chapter_id);
+            await supabase.from('task').upsert({
+              id: realId,
+              user_id: userId,
+              chapter_id: realChapId,
+              title: t.title,
+              scheduled_date: date,
+              time_slot: t.time_slot,
+              effort_level: t.effort_level,
+              priority: t.priority,
+              position: t.position,
+              status: t.status,
+              incomplete_reason: t.incomplete_reason,
+              estimated_minutes: t.estimated_minutes,
+              actual_minutes: t.actual_minutes,
+            } as never);
+
+            if (realId !== t.id) {
+              await deleteLocalTask(t.id);
+              await saveLocalTask({
+                ...t,
+                id: realId,
+                chapter_id: realChapId,
+                user_id: userId,
+                created_at: new Date().toISOString(),
+                completed_at: t.status === 'completed' ? new Date().toISOString() : null,
+              });
+              t.id = realId;
+            }
+          }
+          return localList;
+        }
+
+        return [];
       }
-    } catch {
-      // Cloud inactive or offline: seamlessly return local database data
+    } catch (err) {
+      console.warn('Supabase fetch tasks failed, falling back to local database:', err);
     }
   }
 
-  return localList;
+  // 2. Offline fallback to local IndexedDB
+  return await getLocalTasksForDate(userId, date, activeTrack);
 }
 
 export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'completed_at'>) {
-  const newId = `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const newId = generateUuid();
+  const validChapterId = resolveChapterId(task.chapter_id);
+
   const localTask: LocalTask = {
     ...task,
     id: newId,
+    chapter_id: validChapterId,
     incomplete_reason: null,
     estimated_minutes: task.estimated_minutes ?? 45,
     actual_minutes: task.actual_minutes ?? null,
@@ -105,14 +151,26 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'complet
   // Instant local save
   await saveLocalTask(localTask);
 
-  // Background cloud push
+  // Cloud push
   if (task.user_id) {
-    Promise.resolve(
-      supabase.from('task').insert({ ...task, id: newId } as never).select().single()
-    ).catch(() => {});
-    Promise.resolve(
-      logEvent(task.user_id, 'task_created', { task_id: newId, chapter_id: task.chapter_id })
-    ).catch(() => {});
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from('task')
+          .insert({
+            ...task,
+            id: newId,
+            chapter_id: validChapterId,
+          } as never)
+          .select()
+          .single();
+        if (error) console.error('Cloud task push error:', error);
+      } catch (err) {
+        console.error('Cloud task push exception:', err);
+      }
+    })();
+
+    logEvent(task.user_id, 'task_created', { task_id: newId, chapter_id: validChapterId }).catch(() => {});
   }
 
   return localTask as unknown as Task;
@@ -122,10 +180,18 @@ export async function updateTask(
   taskId: string,
   updates: Partial<Pick<Task, 'title' | 'chapter_id' | 'time_slot' | 'effort_level' | 'estimated_minutes'>>
 ) {
+  if (updates.chapter_id) {
+    updates.chapter_id = resolveChapterId(updates.chapter_id);
+  }
   await updateLocalTask(taskId, updates);
-  Promise.resolve(
-    supabase.from('task').update(updates as never).eq('id', taskId)
-  ).catch(() => {});
+  (async () => {
+    try {
+      const { error } = await supabase.from('task').update(updates as never).eq('id', taskId);
+      if (error) console.error('Cloud task update error:', error);
+    } catch (err) {
+      console.error('Cloud task update exception:', err);
+    }
+  })();
 }
 
 export async function closeTask(

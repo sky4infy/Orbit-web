@@ -3,7 +3,15 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSubjectProgress, getChaptersForSubject, upsertChapterProgress } from '@/api/journey';
+import {
+  getSubjectProgress,
+  getChaptersForSubject,
+  upsertChapterProgress,
+  deleteCustomSubject,
+  deleteCustomChapter,
+} from '@/api/journey';
+import { getChaptersOverview } from '@/api/chapters';
+import { syncAllUserData } from '@/lib/syncService';
 import type { SubjectProgressRow, ChapterStatusRow, ChapterStatus, TrackType } from '@/types/database.types';
 import { useRequireAuth } from '@/lib/useRequireAuth';
 import { OrbitMasteryMap } from '@/components/OrbitMasteryMap';
@@ -17,7 +25,7 @@ import {
   deleteSubject,
   deleteChapter,
 } from '@/lib/curriculumData';
-import { Orbit, ListFilter, AlertCircle, Plus, ChevronDown, CheckCircle2, Award, BookOpen, Trash2 } from 'lucide-react';
+import { Orbit, ListFilter, AlertCircle, Plus, ChevronDown, CheckCircle2, Award, BookOpen, Trash2, RotateCcw } from 'lucide-react';
 
 const STATUS_META: Record<ChapterStatus, { label: string; color: string; badge: string }> = {
   not_started: { label: 'Not started', color: 'bg-white/20', badge: 'border-white/10 text-paper/40 hover:border-white/30' },
@@ -98,6 +106,7 @@ export default function JourneyPage() {
     name: string;
     count?: number;
   } | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Eager initialization — renders user's track immediately (0ms delay)
   const initialTrack: TrackType = typeof window !== 'undefined'
@@ -108,10 +117,45 @@ export default function JourneyPage() {
   const [openSubject, setOpenSubject] = useState<string | null>(initialData.subRows[0]?.subject_id ?? null);
   const [chaptersBySubject, setChaptersBySubject] = useState<Record<string, ChapterStatusRow[]>>(initialData.grouped);
 
-  const reloadCurriculum = useCallback((activeTrack = track) => {
+  const reloadCurriculum = useCallback(async (activeTrack = track) => {
+    // 1. Instant local render
     const data = buildCurriculumState(activeTrack);
     setSubjects(data.subRows);
     setChaptersBySubject(data.grouped);
+
+    // 2. Fetch live joined data from Supabase
+    try {
+      const [subRows, chapRows] = await Promise.all([
+        getSubjectProgress(activeTrack),
+        getChaptersOverview(activeTrack),
+      ]);
+
+      if (chapRows && chapRows.length > 0) {
+        const grouped: Record<string, ChapterStatusRow[]> = {};
+        for (const c of chapRows) {
+          grouped[c.subjectId] ??= [];
+          grouped[c.subjectId].push({
+            chapter_id: c.id,
+            chapter_name: c.name,
+            subject_id: c.subjectId,
+            subject_name: c.subjectName,
+            track: activeTrack,
+            status: c.status,
+            confidence_score: c.confidence,
+            notes: null,
+            last_revised_at: null,
+            unresolved_mistakes: c.unresolvedMistakes,
+          });
+        }
+        setChaptersBySubject(grouped);
+      }
+
+      if (subRows && subRows.length > 0) {
+        setSubjects(subRows);
+      }
+    } catch (err) {
+      console.warn('Cloud curriculum fetch error:', err);
+    }
   }, [track]);
 
   // Read track preference once
@@ -123,37 +167,64 @@ export default function JourneyPage() {
     }
   }, [track, reloadCurriculum]);
 
-  // Background sync with timeout protection
+  // Sync all user data on load
   useEffect(() => {
-    let isMounted = true;
-    withTimeout(getSubjectProgress(track), 800)
-      .then((rows) => {
-        if (isMounted && rows && rows.length > 0) {
-          setSubjects((prev) => {
-            // merge remote with local custom subjects
-            const remoteMap = new Map(rows.map((r) => [r.subject_id, r]));
-            return prev.map((s) => remoteMap.get(s.subject_id) ?? s);
-          });
-        }
-      })
-      .catch(() => {
-        // Fallback already rendered
+    if (userId) {
+      syncAllUserData(userId).then(() => {
+        reloadCurriculum(track);
       });
-    return () => {
-      isMounted = false;
-    };
-  }, [track]);
+    } else {
+      reloadCurriculum(track);
+    }
+  }, [userId, track, reloadCurriculum]);
+
+  // Listen for sync completions
+  useEffect(() => {
+    const handleSync = () => reloadCurriculum(track);
+    window.addEventListener('orbit:sync_completed', handleSync);
+    return () => window.removeEventListener('orbit:sync_completed', handleSync);
+  }, [track, reloadCurriculum]);
+
+  const handleManualSync = async () => {
+    if (!userId || isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await syncAllUserData(userId);
+      await reloadCurriculum(track);
+    } catch (e) {
+      console.error('Manual sync failed:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   async function toggleSubject(subjectId: string) {
     setOpenSubject((prev) => (prev === subjectId ? null : subjectId));
   }
 
-  function handleSaveChapterStatus(chapterId: string, status: ChapterStatus, confidence: number) {
+  async function handleSaveChapterStatus(chapterId: string, status: ChapterStatus, confidence: number) {
+    // 1. Optimistic UI update
+    setChaptersBySubject((prev) => {
+      const next = { ...prev };
+      for (const sId in next) {
+        next[sId] = next[sId].map((c) =>
+          c.chapter_id === chapterId ? { ...c, status, confidence_score: confidence } : c
+        );
+      }
+      return next;
+    });
+
+    // 2. Persist local override
     saveChapterOverride(chapterId, { status, confidence });
+
+    // 3. Upsert to Supabase
     if (userId) {
-      upsertChapterProgress(userId, chapterId, { status, confidence_score: confidence }).catch(() => {});
+      try {
+        await upsertChapterProgress(userId, chapterId, { status, confidence_score: confidence });
+      } catch (err) {
+        console.error('upsertChapterProgress error:', err);
+      }
     }
-    reloadCurriculum(track);
   }
 
   function handleDeleteSubject(subjectId: string, subjectName: string, chapterCount: number) {
@@ -207,6 +278,18 @@ export default function JourneyPage() {
             >
               <Plus size={13} />
               <span>Subject</span>
+            </button>
+
+            {/* Cloud Sync Button */}
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className={`flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-paper/70 transition hover:border-amber/30 hover:bg-amber/10 hover:text-amber ${
+                isSyncing ? 'text-amber' : ''
+              }`}
+              title={isSyncing ? 'Synchronizing with cloud...' : 'Sync with cloud across devices'}
+            >
+              <RotateCcw size={13} className={isSyncing ? 'animate-spin text-amber' : ''} />
             </button>
 
             <div className="flex items-center rounded-xl border border-white/10 bg-ink-50 p-1 text-xs">
@@ -384,6 +467,7 @@ export default function JourneyPage() {
 
       {/* Add Custom Subject Modal */}
       <AddSubjectModal
+        userId={userId}
         track={track}
         open={addSubjectOpen}
         onClose={() => setAddSubjectOpen(false)}
@@ -392,6 +476,7 @@ export default function JourneyPage() {
 
       {/* Add Custom Chapter Modal */}
       <AddChapterModal
+        userId={userId}
         subjects={subjects.map((s) => ({ subject_id: s.subject_id, subject_name: s.subject_name }))}
         defaultSubjectId={addChapterForSubject?.id}
         track={track}
@@ -406,8 +491,12 @@ export default function JourneyPage() {
         open={Boolean(editingChapter)}
         onClose={() => setEditingChapter(null)}
         onSave={handleSaveChapterStatus}
-        onDelete={(id) => {
-          deleteChapter(id);
+        onDelete={async (id) => {
+          if (userId) {
+            await deleteCustomChapter(userId, id);
+          } else {
+            deleteChapter(id);
+          }
           reloadCurriculum(track);
         }}
       />
@@ -455,11 +544,19 @@ export default function JourneyPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     if (deleteConfirmation.type === 'subject') {
-                      deleteSubject(deleteConfirmation.id);
+                      if (userId) {
+                        await deleteCustomSubject(userId, deleteConfirmation.id);
+                      } else {
+                        deleteSubject(deleteConfirmation.id);
+                      }
                     } else {
-                      deleteChapter(deleteConfirmation.id);
+                      if (userId) {
+                        await deleteCustomChapter(userId, deleteConfirmation.id);
+                      } else {
+                        deleteChapter(deleteConfirmation.id);
+                      }
                     }
                     setDeleteConfirmation(null);
                     reloadCurriculum(track);
