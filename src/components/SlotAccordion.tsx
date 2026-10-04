@@ -10,6 +10,7 @@ import { SwipeableTaskRow } from '@/components/SwipeableTaskRow';
 interface Props {
   tasksBySlot: { slot: TimeSlot; items: TaskWithChapter[] }[];
   onDone: (task: TaskWithChapter) => void;
+  onUndoDone?: (task: TaskWithChapter) => void;
   onMove: (task: TaskWithChapter) => void;
   onRequestSkip: (task: TaskWithChapter) => void;
   onEdit: (task: TaskWithChapter) => void;
@@ -27,6 +28,7 @@ const SLOT_META: Record<TimeSlot, { label: string; time: string; icon: React.Rea
 export function SlotAccordion({
   tasksBySlot,
   onDone,
+  onUndoDone,
   onMove,
   onRequestSkip,
   onEdit,
@@ -149,6 +151,7 @@ export function SlotAccordion({
                           key={task.id}
                           task={task}
                           onDone={() => onDone(task)}
+                          onUndoDone={onUndoDone ? () => onUndoDone(task) : undefined}
                           onMove={() => onMove(task)}
                           onRequestSkip={() => onRequestSkip(task)}
                           onEdit={() => onEdit(task)}

@@ -208,6 +208,17 @@ export default function PlannerPage() {
     }
   }
 
+  async function handleUndoDone(task: TaskWithChapter) {
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'pending' } : t)));
+    try {
+      await revertTaskToPending(task.id, date);
+      await refreshGamification();
+    } catch {
+      // Ignored
+    }
+    refresh();
+  }
+
   function handleRequestSkip(task: TaskWithChapter) {
     setTaskToSkip(task);
     setSkipModalOpen(true);
@@ -460,6 +471,7 @@ export default function PlannerPage() {
               <SlotAccordion
                 tasksBySlot={tasksBySlot}
                 onDone={markDone}
+                onUndoDone={handleUndoDone}
                 onMove={moveToTomorrow}
                 onRequestSkip={handleRequestSkip}
                 onEdit={setEditingTask}

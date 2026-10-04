@@ -10,6 +10,7 @@ import { vibrate } from '@/lib/haptics';
 interface Props {
   task: TaskWithChapter;
   onDone: () => void;
+  onUndoDone?: () => void;
   onMove: () => void;
   onRequestSkip: () => void;
   onEdit: () => void;
@@ -22,6 +23,7 @@ const MOVE_CANCEL_PX = 8;
 export function SwipeableTaskRow({
   task,
   onDone,
+  onUndoDone,
   onMove,
   onRequestSkip,
   onEdit,
@@ -100,6 +102,10 @@ export function SwipeableTaskRow({
           <div className="relative shrink-0">
             <button
               onClick={() => {
+                if (task.status === 'completed') {
+                  onUndoDone?.();
+                  return;
+                }
                 if (task.status !== 'pending') return;
                 vibrate(10);
                 fireBurst();
@@ -107,10 +113,11 @@ export function SwipeableTaskRow({
               }}
               className={`flex h-6 w-6 items-center justify-center rounded-lg border-2 transition-all ${
                 task.status === 'completed'
-                  ? 'border-emerald-400 bg-emerald-400 text-ink shadow-sm shadow-emerald-400/20'
+                  ? 'border-emerald-400 bg-emerald-400 text-ink shadow-sm shadow-emerald-400/20 hover:bg-emerald-500 hover:border-emerald-500'
                   : 'border-white/20 bg-white/5 hover:border-amber hover:bg-amber/10'
               }`}
-              aria-label="Mark done"
+              aria-label={task.status === 'completed' ? 'Uncheck task' : 'Mark done'}
+              title={task.status === 'completed' ? 'Click to uncheck' : 'Mark done'}
             >
               {task.status === 'completed' && <Check size={14} className="stroke-[3]" />}
             </button>
