@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, useAnimation, type PanInfo } from 'framer-motion';
-import { Play, MoreVertical, Check, ArrowRight, SkipForward, Clock, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { Play, MoreVertical, Check, ArrowRight, SkipForward, Clock, Pencil, Trash2 } from 'lucide-react';
 import type { TaskWithChapter } from '@/api/tasks';
 import { CompletionBurst } from '@/components/CompletionBurst';
 import { vibrate } from '@/lib/haptics';
@@ -164,22 +164,6 @@ export function SwipeableTaskRow({
             </div>
           )}
 
-          {task.status === 'completed' && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                vibrate(10);
-                onUndoDone?.();
-              }}
-              title="Undo completion — return to active missions"
-              className="flex items-center gap-1.5 rounded-xl border border-amber/30 bg-amber/15 px-3 py-1.5 text-xs font-semibold text-amber transition hover:bg-amber/25 hover:border-amber/50 active:scale-95 shadow-sm"
-            >
-              <RotateCcw size={12} />
-              <span>Undo</span>
-            </button>
-          )}
-
           {task.status === 'pending' && (
             <>
               {/* Focus Timer Launch Button */}
@@ -214,24 +198,9 @@ export function SwipeableTaskRow({
           )}
 
           {task.status === 'skipped' && (
-            <div className="flex items-center gap-2">
-              <span className="rounded-md bg-rust/15 px-2 py-0.5 text-[10px] font-mono text-rust">
-                Skipped
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  vibrate(10);
-                  onUndoDone?.();
-                }}
-                title="Undo skip — mark as pending"
-                className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-medium text-paper/70 hover:border-amber/30 hover:text-amber hover:bg-amber/10 transition active:scale-95"
-              >
-                <RotateCcw size={11} />
-                <span>Undo</span>
-              </button>
-            </div>
+            <span className="rounded-md bg-rust/15 px-2 py-0.5 text-[10px] font-mono text-rust">
+              Skipped
+            </span>
           )}
         </div>
       </motion.div>
