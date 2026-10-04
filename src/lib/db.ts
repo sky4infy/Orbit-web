@@ -256,6 +256,15 @@ export async function getLocalExams(userId: string): Promise<LocalExam[]> {
   }
 }
 
+export async function getLocalExam(examId: string): Promise<LocalExam | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    return (await db.exams.get(examId)) || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveLocalExam(exam: LocalExam) {
   if (typeof window === 'undefined') return;
   await db.exams.put(exam);

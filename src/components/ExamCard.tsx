@@ -2,9 +2,11 @@
 
 import { differenceInCalendarDays } from 'date-fns';
 import type { ExamReadinessRow } from '@/types/database.types';
+import { Pencil, Trash2 } from 'lucide-react';
 
 interface Props {
   exam: ExamReadinessRow;
+  onEdit?: (exam: ExamReadinessRow) => void;
   onDelete: (examId: string) => void;
 }
 
@@ -21,16 +23,16 @@ const TYPE_LABEL: Record<string, string> = {
   other: 'Milestone',
 };
 
-export function ExamCard({ exam, onDelete }: Props) {
+export function ExamCard({ exam, onEdit, onDelete }: Props) {
   const daysLeft = differenceInCalendarDays(new Date(exam.exam_date), new Date());
   const coverage = exam.total_chapters > 0 ? (exam.mastered_chapters / exam.total_chapters) * 100 : 0;
 
   return (
-    <div className="rounded-xl2 border border-white/5 bg-ink-50 p-4">
+    <div className="rounded-2xl border border-white/5 bg-ink-50 p-4 transition hover:border-white/10">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs text-paper/40">{TYPE_LABEL[exam.exam_type]}</p>
-          <p className="mt-0.5 font-display text-lg font-medium">{exam.name}</p>
+          <p className="mt-0.5 font-display text-lg font-medium text-paper">{exam.name}</p>
         </div>
         <div className="text-right">
           <p className={`font-mono text-xl font-medium ${daysLeft <= 7 ? 'text-rust' : 'text-amber'}`}>
@@ -56,9 +58,26 @@ export function ExamCard({ exam, onDelete }: Props) {
         <p className="mt-3 text-xs text-paper/30">No syllabus linked yet.</p>
       )}
 
-      <button onClick={() => onDelete(exam.exam_id)} className="mt-3 text-[11px] text-paper/25 hover:text-rust">
-        Remove
-      </button>
+      <div className="mt-3.5 flex items-center gap-3 pt-1 border-t border-white/5">
+        {onEdit && (
+          <button
+            onClick={() => onEdit(exam)}
+            className="flex items-center gap-1 text-xs text-paper/40 transition hover:text-amber"
+            title="Edit test details"
+          >
+            <Pencil size={12} />
+            <span>Edit</span>
+          </button>
+        )}
+        <button
+          onClick={() => onDelete(exam.exam_id)}
+          className="flex items-center gap-1 text-xs text-paper/30 transition hover:text-rust"
+          title="Remove test"
+        >
+          <Trash2 size={12} />
+          <span>Remove</span>
+        </button>
+      </div>
     </div>
   );
 }

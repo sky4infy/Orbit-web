@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
-import { db, saveLocalTask, deleteLocalTask } from '@/lib/db';
+import { db, saveLocalTask, deleteLocalTask, saveLocalExam, deleteLocalExam } from '@/lib/db';
+import { getHiddenSampleExams } from '@/api/exams';
 import {
   getCustomSubjects,
   getCustomChapters,
@@ -326,6 +327,87 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
 }
 
 /**
+ * Bi-directional exam synchronization:
+ * 1. Pushes any offline created exams to Supabase with valid UUIDs.
+ * 2. Purges any sample exams that the user has removed.
+ * 3. Pulls cloud exams down to Dexie so PC & Phone have identical test dates.
+ */
+export async function syncExamsBetweenLocalAndCloud(userId: string) {
+  if (!userId) return;
+
+  try {
+    const hiddenSampleIds = getHiddenSampleExams();
+
+    // 1. Push local offline exams to Supabase
+    const localExams = await db.exams.toArray();
+    for (const le of localExams) {
+      if (hiddenSampleIds.includes(le.id)) {
+        await deleteLocalExam(le.id);
+        continue;
+      }
+
+      if (le.user_id === userId || !le.user_id) {
+        const isLegacyId = !isUuid(le.id);
+        const realId = isLegacyId ? generateUuid() : le.id;
+
+        const { error } = await supabase.from('exam').upsert({
+          id: realId,
+          user_id: userId,
+          name: le.name,
+          exam_type: le.exam_type,
+          exam_date: le.exam_date,
+        } as never, { onConflict: 'id' });
+
+        if (!error) {
+          if (isLegacyId) {
+            await deleteLocalExam(le.id);
+            await saveLocalExam({ ...le, id: realId, user_id: userId });
+          }
+          if (le.chapter_ids && le.chapter_ids.length > 0) {
+            const validChapterIds = le.chapter_ids.map(resolveChapterId);
+            await supabase.from('exam_chapter').delete().eq('exam_id', realId);
+            await supabase
+              .from('exam_chapter')
+              .insert(validChapterIds.map((chapter_id) => ({ exam_id: realId, chapter_id })) as never);
+          }
+        }
+      }
+    }
+
+    // 2. Pull cloud exams into local Dexie
+    const { data: cloudExams, error: fetchError } = await supabase
+      .from('exam')
+      .select('id, name, exam_type, exam_date, created_at')
+      .eq('user_id', userId);
+
+    if (!fetchError && cloudExams && cloudExams.length > 0) {
+      for (const ce of cloudExams as any[]) {
+        if (!hiddenSampleIds.includes(ce.id)) {
+          const { data: chapData } = await supabase
+            .from('exam_chapter')
+            .select('chapter_id')
+            .eq('exam_id', ce.id);
+
+          const chapter_ids = ((chapData as any[]) ?? []).map((r) => r.chapter_id);
+
+          await saveLocalExam({
+            id: ce.id,
+            user_id: userId,
+            name: ce.name,
+            exam_type: ce.exam_type,
+            exam_date: ce.exam_date,
+            created_at: ce.created_at || new Date().toISOString(),
+            chapter_ids,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('syncExamsBetweenLocalAndCloud error:', err);
+  }
+}
+
+/**
  * Master sync function to run whenever user is active.
  * Ensures Phone and PC have identical data.
  */
@@ -340,6 +422,7 @@ export async function syncAllUserData(userId: string): Promise<void> {
       syncCustomChaptersToCloud(userId),
       syncChapterOverridesToCloud(userId),
       syncTasksBetweenLocalAndCloud(userId),
+      syncExamsBetweenLocalAndCloud(userId),
     ]);
 
     if (typeof window !== 'undefined') {

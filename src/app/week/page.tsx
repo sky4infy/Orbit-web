@@ -9,10 +9,12 @@ import type { ExamReadinessRow, TrackType } from '@/types/database.types';
 import { WeekDayCard } from '@/components/WeekDayCard';
 import { ExamCard } from '@/components/ExamCard';
 import { AddExamModal } from '@/components/AddExamModal';
+import { EditExamModal } from '@/components/EditExamModal';
 import { useRequireAuth } from '@/lib/useRequireAuth';
 import { getCurriculumChapters } from '@/lib/curriculumData';
+import { syncAllUserData } from '@/lib/syncService';
 
-function withTimeout<T>(promise: Promise<T>, ms = 800): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Network timeout')), ms)),
@@ -77,11 +79,11 @@ export default function WeekPage() {
     []
   );
 
-  // Eager initialization — renders immediately (0ms latency)
+  // Eager initialization — authenticated users start clean; guests get fallback
   const [days, setDays] = useState<DayOverview[]>(() =>
     weekDates.map((date, idx) => ({ date, total: 3, completed: idx === 0 ? 1 : 0 }))
   );
-  const [exams, setExams] = useState<ExamReadinessRow[]>(() => getFallbackExams('jee_nsep'));
+  const [exams, setExams] = useState<ExamReadinessRow[]>([]);
   const [chapters, setChapters] = useState<ChapterOverview[]>(() =>
     getCurriculumChapters('jee_nsep').map((c) => ({
       id: c.id,
@@ -96,15 +98,17 @@ export default function WeekPage() {
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [dayTasks, setDayTasks] = useState<Record<string, TaskWithChapter[]>>({});
   const [loadingDay, setLoadingDay] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [addExamOpen, setAddExamOpen] = useState(false);
+  const [editingExam, setEditingExam] = useState<ExamReadinessRow | null>(null);
 
   // Read track preference once
   useEffect(() => {
     const saved = localStorage.getItem('orbit_active_track') as TrackType | null;
     if (saved && saved !== track) {
       setTrack(saved);
-      setExams(getFallbackExams(saved));
+      if (!userId) {
+        setExams(getFallbackExams(saved));
+      }
       setChapters(
         getCurriculumChapters(saved).map((c) => ({
           id: c.id,
@@ -117,16 +121,16 @@ export default function WeekPage() {
         }))
       );
     }
-  }, [track]);
+  }, [track, userId]);
 
   // Background sync with timeout protection
   const load = useCallback(
     async (uid: string, activeTrack = track) => {
       try {
         const results = await Promise.allSettled([
-          withTimeout(getWeekOverview(uid, weekDates[0], weekDates[6]), 800),
-          withTimeout(getExams(), 800),
-          withTimeout(getChaptersOverview(activeTrack)),
+          withTimeout(getWeekOverview(uid, weekDates[0], weekDates[6]), 6000),
+          withTimeout(getExams(uid), 6000),
+          withTimeout(getChaptersOverview(activeTrack), 6000),
         ]);
         const [overviewRes, examRes, chapterRes] = results;
 
@@ -136,25 +140,37 @@ export default function WeekPage() {
           setDays(fullWeek);
         }
 
-        if (examRes.status === 'fulfilled' && examRes.value.length > 0) {
+        if (examRes.status === 'fulfilled') {
           setExams(examRes.value);
+        } else if (!uid) {
+          setExams(getFallbackExams(activeTrack));
         }
 
         if (chapterRes.status === 'fulfilled' && chapterRes.value.length > 0) {
           setChapters(chapterRes.value);
         }
-      } catch {
-        // Fallback already rendered
+      } catch (err) {
+        console.warn('Week data load failed:', err);
       }
     },
     [track, weekDates]
   );
 
   useEffect(() => {
-    if (userId) {
-      load(userId, track);
+    if (!userId) {
+      if (!authLoading) {
+        setExams(getFallbackExams(track));
+      }
+      return;
     }
-  }, [userId, load, track]);
+
+    // Trigger background synchronization so phone and PC share identical tests
+    syncAllUserData(userId).then(() => {
+      load(userId, track);
+    });
+
+    load(userId, track);
+  }, [userId, authLoading, load, track]);
 
   const refresh = useCallback(() => {
     if (userId) load(userId, track);
@@ -169,7 +185,7 @@ export default function WeekPage() {
     if (!dayTasks[date] && userId) {
       setLoadingDay(date);
       try {
-        const tasks = await withTimeout(getTasksForDate(userId, date), 800);
+        const tasks = await withTimeout(getTasksForDate(userId, date), 6000);
         setDayTasks((prev) => ({ ...prev, [date]: tasks }));
       } catch {
         // Keep smooth fallback
@@ -181,9 +197,7 @@ export default function WeekPage() {
 
   async function handleDeleteExam(examId: string) {
     setExams((prev) => prev.filter((e) => e.exam_id !== examId));
-    if (userId) {
-      await deleteExam(examId).catch(() => {});
-    }
+    await deleteExam(examId).catch(() => {});
   }
 
   return (
@@ -208,21 +222,37 @@ export default function WeekPage() {
       </header>
 
       {/* Upcoming Tests / Milestones Section */}
-      {exams.length > 0 && (
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-3 px-1">
-            <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-paper/40">
-              Upcoming Exams ({exams.length})
-            </h2>
-            <span className="text-[11px] text-paper/30 font-mono">Exam proximity engine</span>
-          </div>
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-paper/40">
+            Upcoming Exams ({exams.length})
+          </h2>
+          <span className="text-[11px] text-paper/30 font-mono">Exam proximity engine</span>
+        </div>
+
+        {exams.length > 0 ? (
           <div className="flex flex-col gap-3">
             {exams.map((exam) => (
-              <ExamCard key={exam.exam_id} exam={exam} onDelete={handleDeleteExam} />
+              <ExamCard
+                key={exam.exam_id}
+                exam={exam}
+                onEdit={(e) => setEditingExam(e)}
+                onDelete={handleDeleteExam}
+              />
             ))}
           </div>
-        </section>
-      )}
+        ) : (
+          <div className="rounded-2xl border border-dashed border-white/10 bg-ink-50/50 p-6 text-center">
+            <p className="text-xs text-paper/40">No upcoming tests or milestones scheduled.</p>
+            <button
+              onClick={() => setAddExamOpen(true)}
+              className="mt-2 text-xs font-semibold text-amber hover:underline"
+            >
+              + Add a test milestone
+            </button>
+          </div>
+        )}
+      </section>
 
       {/* 7-Day Week Trajectory Section */}
       <section>
@@ -254,6 +284,19 @@ export default function WeekPage() {
           open={addExamOpen}
           onClose={() => setAddExamOpen(false)}
           onCreated={refresh}
+        />
+      )}
+
+      {/* Edit Exam Modal */}
+      {userId && editingExam && (
+        <EditExamModal
+          userId={userId}
+          exam={editingExam}
+          chapters={chapters}
+          open={Boolean(editingExam)}
+          onClose={() => setEditingExam(null)}
+          onUpdated={refresh}
+          onDeleted={(id) => handleDeleteExam(id)}
         />
       )}
     </main>
