@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase/client';
 import type { Mistake, Difficulty, MistakeType } from '@/types/database.types';
 import { logEvent } from '@/api/events';
+import { ensureRevisionExists } from '@/api/revisions';
 import {
   getLocalMistakes,
   addLocalMistake,
@@ -43,7 +44,10 @@ export async function logMistake(mistake: {
   // 1. Instant local IndexedDB save
   await addLocalMistake(localM);
 
-  // 2. Background cloud sync
+  // 2. Automatically enroll chapter in Spaced Repetition queue
+  ensureRevisionExists(mistake.user_id, mistake.chapter_id).catch(() => {});
+
+  // 3. Background cloud sync
   if (mistake.user_id) {
     Promise.resolve(
       supabase
