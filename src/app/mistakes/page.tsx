@@ -177,7 +177,7 @@ export default function MistakesPage() {
         const today = format(new Date(), 'yyyy-MM-dd');
         const results = await Promise.allSettled([
           withTimeout(getMistakesList(uid), 800),
-          withTimeout(getChaptersOverview(), 800),
+          withTimeout(getChaptersOverview(activeTrack)),
           withTimeout(getDueRevisions(uid, today), 800),
         ]);
         const [mistakeRes, chapterRes, revisionRes] = results;

@@ -102,7 +102,7 @@ export default function PlannerPage() {
     try {
       const results = await Promise.allSettled([
         withTimeout(getTasksForDate(uid, date)),
-        withTimeout(getChaptersOverview()),
+        withTimeout(getChaptersOverview(activeTrack)),
         withTimeout(getStreak(uid)),
         withTimeout(getLevelInfo(uid)),
         withTimeout(getDisplayName(uid)),

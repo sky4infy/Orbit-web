@@ -3,11 +3,12 @@ import type { ChapterStatusRow, SubjectProgressRow, ChapterStatus } from '@/type
 import { logEvent } from '@/api/events';
 
 /** One query. All aggregation (chapter counts, mastered counts, avg confidence) already done in Postgres. */
-export async function getSubjectProgress(): Promise<SubjectProgressRow[]> {
-  const { data, error } = await supabase
-    .from('my_subject_progress')
-    .select('*')
-    .order('subject_name', { ascending: true });
+export async function getSubjectProgress(track?: string): Promise<SubjectProgressRow[]> {
+  let query = supabase.from('my_subject_progress').select('*');
+  if (track) {
+    query = query.eq('track', track);
+  }
+  const { data, error } = await query.order('subject_name', { ascending: true });
   if (error) throw error;
   return (data ?? []) as unknown as SubjectProgressRow[];
 }

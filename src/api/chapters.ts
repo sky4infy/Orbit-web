@@ -18,8 +18,12 @@ export interface ChapterOverview {
  * round trip, and the join logic lives in exactly one place (the view)
  * instead of being reimplemented in every function that needs it.
  */
-export async function getChaptersOverview(): Promise<ChapterOverview[]> {
-  const { data, error } = await supabase.from('my_chapter_status').select('*');
+export async function getChaptersOverview(track?: string): Promise<ChapterOverview[]> {
+  let query = supabase.from('my_chapter_status').select('*');
+  if (track) {
+    query = query.eq('track', track);
+  }
+  const { data, error } = await query;
   if (error) throw error;
 
   return ((data ?? []) as unknown as ChapterStatusRow[]).map((row) => ({

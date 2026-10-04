@@ -126,7 +126,7 @@ export default function WeekPage() {
         const results = await Promise.allSettled([
           withTimeout(getWeekOverview(uid, weekDates[0], weekDates[6]), 800),
           withTimeout(getExams(), 800),
-          withTimeout(getChaptersOverview(), 800),
+          withTimeout(getChaptersOverview(activeTrack)),
         ]);
         const [overviewRes, examRes, chapterRes] = results;
 

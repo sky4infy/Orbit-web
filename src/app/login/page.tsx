@@ -37,9 +37,16 @@ export default function LoginPage() {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { display_name: displayName || email.split('@')[0] } },
+          options: {
+            data: {
+              display_name: displayName || email.split('@')[0],
+              track: focusTrack,
+            },
+          },
         });
         if (error) throw error;
+
+        localStorage.setItem('orbit_active_track', focusTrack);
 
         if (data.session) {
           router.push('/planner');
@@ -49,8 +56,14 @@ export default function LoginPage() {
           setMode('login');
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+
+        const userTrack = data.user?.user_metadata?.track;
+        if (userTrack) {
+          localStorage.setItem('orbit_active_track', userTrack);
+        }
+
         router.push('/planner');
         router.refresh();
       }

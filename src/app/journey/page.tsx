@@ -99,8 +99,11 @@ export default function JourneyPage() {
     count?: number;
   } | null>(null);
 
-  // Eager initialization — renders immediately (0ms delay)
-  const initialData = useMemo(() => buildCurriculumState('jee_nsep'), []);
+  // Eager initialization — renders user's track immediately (0ms delay)
+  const initialTrack: TrackType = typeof window !== 'undefined'
+    ? ((localStorage.getItem('orbit_active_track') as TrackType) || 'jee_nsep')
+    : 'jee_nsep';
+  const initialData = useMemo(() => buildCurriculumState(initialTrack), [initialTrack]);
   const [subjects, setSubjects] = useState<SubjectProgressRow[]>(initialData.subRows);
   const [openSubject, setOpenSubject] = useState<string | null>(initialData.subRows[0]?.subject_id ?? null);
   const [chaptersBySubject, setChaptersBySubject] = useState<Record<string, ChapterStatusRow[]>>(initialData.grouped);
@@ -123,7 +126,7 @@ export default function JourneyPage() {
   // Background sync with timeout protection
   useEffect(() => {
     let isMounted = true;
-    withTimeout(getSubjectProgress(), 800)
+    withTimeout(getSubjectProgress(track), 800)
       .then((rows) => {
         if (isMounted && rows && rows.length > 0) {
           setSubjects((prev) => {

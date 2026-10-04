@@ -35,7 +35,7 @@ function withTimeout<T>(promise: Promise<T>, ms = 800): Promise<T> {
 }
 
 export default function ProfilePage() {
-  const { userId, authLoading } = useRequireAuth();
+  const { userId, user, authLoading } = useRequireAuth();
   const [name, setName] = useState('Student');
   const [streak, setStreak] = useState(4);
   const [level, setLevel] = useState<LevelInfo | null>({ level: 2, xp: 12, xpIntoLevel: 2, xpForNextLevel: 10 });
@@ -47,14 +47,20 @@ export default function ProfilePage() {
   const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('orbit_active_track') as TrackType | null;
-    if (saved) setActiveTrack(saved);
+    if (user?.user_metadata?.track) {
+      const uTrack = user.user_metadata.track as TrackType;
+      setActiveTrack(uTrack);
+      localStorage.setItem('orbit_active_track', uTrack);
+    } else {
+      const saved = localStorage.getItem('orbit_active_track') as TrackType | null;
+      if (saved) setActiveTrack(saved);
+    }
 
     const savedPartner = localStorage.getItem('orbit_partner_name');
     if (savedPartner) setPartnerName(savedPartner);
 
     getOrbitStats().then(setDbStats).catch(() => {});
-  }, []);
+  }, [user]);
 
   async function handleExportBackup() {
     try {
@@ -115,10 +121,15 @@ export default function ProfilePage() {
     };
   }, [userId]);
 
-  function handleTrackSelect(trackId: TrackType) {
+  async function handleTrackSelect(trackId: TrackType) {
     setActiveTrack(trackId);
     localStorage.setItem('orbit_active_track', trackId);
     setTrackSaved(true);
+    try {
+      await supabase.auth.updateUser({ data: { track: trackId } });
+    } catch {
+      // Local-first fallback
+    }
     setTimeout(() => setTrackSaved(false), 2000);
   }
 
@@ -255,7 +266,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-paper">Local-First Database Engine</h2>
-              <p className="text-[11px] text-emerald-400 font-medium">Approach 1 Active • 0ms Latency • Never Sleeps</p>
+              <p className="text-[11px] text-emerald-400 font-medium">Zero-Latency Engine • 0ms Latency • Cloud Synced</p>
             </div>
           </div>
           <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-mono text-emerald-400">
