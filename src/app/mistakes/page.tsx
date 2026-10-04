@@ -181,7 +181,7 @@ export default function MistakesPage() {
         const results = await Promise.allSettled([
           withTimeout(getMistakesList(uid), 6000),
           withTimeout(getChaptersOverview(activeTrack), 6000),
-          withTimeout(getDueRevisions(uid, today), 6000),
+          withTimeout(getDueRevisions(uid, today, activeTrack), 6000),
         ]);
         const [mistakeRes, chapterRes, revisionRes] = results;
 
@@ -213,8 +213,10 @@ export default function MistakesPage() {
   useEffect(() => {
     if (userId) {
       load(userId, track);
+    } else if (!authLoading) {
+      load('', track);
     }
-  }, [userId, load, track]);
+  }, [userId, authLoading, load, track]);
 
   const refresh = useCallback(() => {
     if (userId) load(userId, track);

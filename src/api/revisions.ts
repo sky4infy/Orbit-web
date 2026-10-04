@@ -81,7 +81,7 @@ function getStarterRevisions(userId: string, activeTrack = 'jee_nsep'): LocalRev
 }
 
 export async function getDueRevisions(userId: string, onOrBefore: string, activeTrack?: string): Promise<DueRevisionRow[]> {
-  const resolvedTrack = activeTrack || (typeof window !== 'undefined' ? localStorage.getItem('orbit_active_track') : 'jee_nsep') || 'jee_nsep';
+  const resolvedTrack = activeTrack || (typeof window !== 'undefined' ? (localStorage.getItem('orbit_active_track') as string) : 'college_cs_aiml') || 'college_cs_aiml';
 
   // 1. Instant local read from IndexedDB (0ms latency)
   let localList = await getLocalRevisions(userId);

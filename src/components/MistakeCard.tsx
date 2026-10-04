@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { motion, useAnimation, type PanInfo } from 'framer-motion';
 import type { MistakeRow } from '@/api/mistakes';
 import { vibrate } from '@/lib/haptics';
@@ -39,7 +40,15 @@ export function MistakeCard({ mistake, onResolve }: Props) {
   if (mistake.resolved) {
     return (
       <div className="rounded-xl2 border border-white/5 bg-ink-50 p-4 opacity-40">
-        <p className="text-xs text-paper/40">{mistake.subject_name} · {mistake.chapter_name}</p>
+        <p className="text-xs text-paper/40 flex items-center gap-1">
+          <span>{mistake.subject_name} ·</span>
+          <Link
+            href={`/journey/${mistake.chapter_id}`}
+            className="hover:text-amber hover:underline transition-colors truncate max-w-[220px]"
+          >
+            {mistake.chapter_name}
+          </Link>
+        </p>
         <p className="mt-1 text-sm text-paper/50 line-through">{TYPE_LABEL[mistake.mistake_type]}</p>
       </div>
     );
@@ -56,8 +65,16 @@ export function MistakeCard({ mistake, onResolve }: Props) {
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs text-paper/40">
-            {mistake.subject_name} · {mistake.chapter_name}
+          <p className="text-xs text-paper/40 flex items-center gap-1">
+            <span>{mistake.subject_name} ·</span>
+            <Link
+              href={`/journey/${mistake.chapter_id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="hover:text-amber hover:underline transition-colors truncate max-w-[220px]"
+              title="Open chapter in Journey"
+            >
+              {mistake.chapter_name}
+            </Link>
           </p>
           <p className="mt-1 text-sm font-medium">{TYPE_LABEL[mistake.mistake_type]}</p>
           {mistake.description && <p className="mt-1 text-xs text-paper/50">{mistake.description}</p>}
