@@ -198,10 +198,7 @@ export default function PlannerPage() {
       setToast({
         id: `done-${task.id}-${Date.now()}`,
         message: 'Task completed! Keep your streak glowing.',
-        onUndo: async () => {
-          await revertTaskToPending(task.id, date);
-          refresh();
-        },
+        onUndo: () => handleUndoDone(task),
       });
     } catch {
       refresh();
@@ -213,6 +210,10 @@ export default function PlannerPage() {
     try {
       await revertTaskToPending(task.id, date);
       await refreshGamification();
+      setToast({
+        id: `undo-${task.id}-${Date.now()}`,
+        message: `Restored "${task.title}" back to active!`,
+      });
     } catch {
       // Ignored
     }
@@ -234,10 +235,7 @@ export default function PlannerPage() {
       setToast({
         id: `skip-${task.id}-${Date.now()}`,
         message: 'Mission recorded — zero debt.',
-        onUndo: async () => {
-          await revertTaskToPending(task.id, date);
-          refresh();
-        },
+        onUndo: () => handleUndoDone(task),
       });
     } catch {
       refresh();
@@ -252,10 +250,7 @@ export default function PlannerPage() {
       setToast({
         id: `move-${task.id}-${Date.now()}`,
         message: 'Rescheduled to tomorrow seamlessly',
-        onUndo: async () => {
-          await revertTaskToPending(task.id, date);
-          refresh();
-        },
+        onUndo: () => handleUndoDone(task),
       });
     } catch {
       refresh();

@@ -1,8 +1,8 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useAnimation, type PanInfo } from 'framer-motion';
-import { Play, MoreVertical, Check, ArrowRight, SkipForward, Clock, Pencil, Trash2 } from 'lucide-react';
+import { Play, MoreVertical, Check, ArrowRight, SkipForward, Clock, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import type { TaskWithChapter } from '@/api/tasks';
 import { CompletionBurst } from '@/components/CompletionBurst';
 import { vibrate } from '@/lib/haptics';
@@ -31,6 +31,11 @@ export function SwipeableTaskRow({
 }: Props) {
   const controls = useAnimation();
   const [burstAt, setBurstAt] = useState(0);
+
+  // Smoothly ensure row is in visible position when status changes
+  useEffect(() => {
+    controls.start({ x: 0, opacity: 1, transition: { duration: 0.25 } });
+  }, [task.status, controls]);
 
   function fireBurst() {
     setBurstAt((n) => n + 1);
@@ -101,8 +106,11 @@ export function SwipeableTaskRow({
           {/* Checkbox with micro-interaction */}
           <div className="relative shrink-0">
             <button
-              onClick={() => {
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
                 if (task.status === 'completed') {
+                  vibrate(10);
                   onUndoDone?.();
                   return;
                 }
@@ -111,15 +119,15 @@ export function SwipeableTaskRow({
                 fireBurst();
                 onDone();
               }}
-              className={`flex h-6 w-6 items-center justify-center rounded-lg border-2 transition-all ${
+              className={`flex h-7 w-7 items-center justify-center rounded-lg border-2 transition-all cursor-pointer ${
                 task.status === 'completed'
-                  ? 'border-emerald-400 bg-emerald-400 text-ink shadow-sm shadow-emerald-400/20 hover:bg-emerald-500 hover:border-emerald-500'
+                  ? 'border-emerald-400 bg-emerald-400 text-ink shadow-sm shadow-emerald-400/20 hover:bg-emerald-500 hover:border-emerald-500 hover:scale-105'
                   : 'border-white/20 bg-white/5 hover:border-amber hover:bg-amber/10'
               }`}
-              aria-label={task.status === 'completed' ? 'Uncheck task' : 'Mark done'}
-              title={task.status === 'completed' ? 'Click to uncheck' : 'Mark done'}
+              aria-label={task.status === 'completed' ? 'Uncheck task and return to active' : 'Mark done'}
+              title={task.status === 'completed' ? 'Click to uncheck (Undo)' : 'Mark done'}
             >
-              {task.status === 'completed' && <Check size={14} className="stroke-[3]" />}
+              {task.status === 'completed' && <Check size={15} className="stroke-[3]" />}
             </button>
             {burstAt > 0 && <CompletionBurst key={burstAt} />}
           </div>
@@ -148,12 +156,28 @@ export function SwipeableTaskRow({
         </div>
 
         {/* Right: Duration & Actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {task.estimated_minutes && (
             <div className="hidden sm:flex items-center gap-1 rounded-md bg-white/5 px-2 py-1 font-mono text-[11px] text-paper/50">
               <Clock size={11} />
               <span>{task.estimated_minutes}m</span>
             </div>
+          )}
+
+          {task.status === 'completed' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                vibrate(10);
+                onUndoDone?.();
+              }}
+              title="Undo completion — return to active missions"
+              className="flex items-center gap-1.5 rounded-xl border border-amber/30 bg-amber/15 px-3 py-1.5 text-xs font-semibold text-amber transition hover:bg-amber/25 hover:border-amber/50 active:scale-95 shadow-sm"
+            >
+              <RotateCcw size={12} />
+              <span>Undo</span>
+            </button>
           )}
 
           {task.status === 'pending' && (
@@ -190,9 +214,24 @@ export function SwipeableTaskRow({
           )}
 
           {task.status === 'skipped' && (
-            <span className="rounded-md bg-rust/15 px-2 py-0.5 text-[10px] font-mono text-rust">
-              Skipped
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-md bg-rust/15 px-2 py-0.5 text-[10px] font-mono text-rust">
+                Skipped
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  vibrate(10);
+                  onUndoDone?.();
+                }}
+                title="Undo skip — mark as pending"
+                className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-medium text-paper/70 hover:border-amber/30 hover:text-amber hover:bg-amber/10 transition active:scale-95"
+              >
+                <RotateCcw size={11} />
+                <span>Undo</span>
+              </button>
+            </div>
           )}
         </div>
       </motion.div>
