@@ -26,6 +26,9 @@ export function FocusTimerModal({ userId, task, open, onClose, onSessionEnded }:
   const [markTaskComplete, setMarkTaskComplete] = useState(true);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const accumulatedSecondsRef = useRef<number>(0);
+  const wakeLockRef = useRef<any>(null);
 
   const targetSeconds = typeof preset === 'number' ? preset * 60 : null;
   const remainingSeconds = targetSeconds ? Math.max(0, targetSeconds - secondsElapsed) : secondsElapsed;
@@ -41,21 +44,73 @@ export function FocusTimerModal({ userId, task, open, onClose, onSessionEnded }:
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
 
-  // Timer tick
+  // Request Screen Wake Lock so phone doesn't sleep during deep work
+  const requestWakeLock = async () => {
+    try {
+      if (typeof window !== 'undefined' && 'wakeLock' in navigator && !wakeLockRef.current) {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      }
+    } catch {
+      // Ignored if device policy or low battery rejects wakeLock
+    }
+  };
+
+  const releaseWakeLock = async () => {
+    try {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
+  // Drift-proof timer: calculates elapsed time from real system timestamps
   useEffect(() => {
     if (isRunning) {
+      if (!startTimeRef.current) {
+        startTimeRef.current = Date.now();
+      }
+      requestWakeLock();
+
       timerRef.current = setInterval(() => {
-        setSecondsElapsed((prev) => prev + 1);
-      }, 1000);
+        if (startTimeRef.current) {
+          const currentSegment = Math.floor((Date.now() - startTimeRef.current) / 1000);
+          setSecondsElapsed(accumulatedSecondsRef.current + currentSegment);
+        }
+      }, 500);
+
+      // Instantly catches up elapsed time when returning from screen timeout or background app
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && isRunning && startTimeRef.current) {
+          const currentSegment = Math.floor((Date.now() - startTimeRef.current) / 1000);
+          setSecondsElapsed(accumulatedSecondsRef.current + currentSegment);
+          requestWakeLock();
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
+      releaseWakeLock();
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
   }, [isRunning]);
 
+  // Clean up wake lock on unmount
+  useEffect(() => {
+    return () => {
+      releaseWakeLock();
+    };
+  }, []);
+
   async function handleStart() {
+    startTimeRef.current = Date.now();
     setIsRunning(true);
     if (!sessionId && userId) {
       try {
@@ -69,10 +124,22 @@ export function FocusTimerModal({ userId, task, open, onClose, onSessionEnded }:
 
   function handlePause() {
     setIsRunning(false);
+    if (startTimeRef.current) {
+      const currentSegment = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      accumulatedSecondsRef.current += currentSegment;
+      startTimeRef.current = null;
+    }
+    releaseWakeLock();
   }
 
   async function handleFinish() {
     setIsRunning(false);
+    releaseWakeLock();
+    if (startTimeRef.current) {
+      const currentSegment = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      accumulatedSecondsRef.current += currentSegment;
+      startTimeRef.current = null;
+    }
     setIsFinishing(true);
     const minutesSpent = Math.max(1, Math.round(secondsElapsed / 60));
 
@@ -88,6 +155,7 @@ export function FocusTimerModal({ userId, task, open, onClose, onSessionEnded }:
       setTimeout(() => {
         setIsFinishing(false);
         setSecondsElapsed(0);
+        accumulatedSecondsRef.current = 0;
         setSessionId(null);
         onSessionEnded?.();
         onClose();
@@ -101,8 +169,11 @@ export function FocusTimerModal({ userId, task, open, onClose, onSessionEnded }:
 
   function handleReset() {
     setIsRunning(false);
+    startTimeRef.current = null;
+    accumulatedSecondsRef.current = 0;
     setSecondsElapsed(0);
     setPausedSeconds(0);
+    releaseWakeLock();
   }
 
   if (!open) return null;
