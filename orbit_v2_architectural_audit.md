@@ -142,20 +142,40 @@ Due revisions in `db.revisions` must automatically show up as suggested tasks in
 
 ## 4. Phase-by-Phase Implementation Roadmap
 
-### Phase 1: Real-State Aggregator & Dynamic Planning Pipeline (Immediate)
-- [ ] Create `src/lib/academicState.ts`: Queries Dexie for unified chapter mastery, active mistake counts, nearest exams, and energy metrics.
-- [ ] Connect `planningEngine.ts` to `getUnifiedAcademicState()` so recommendations reflect real student data.
-- [ ] Update `AiMentorCard.tsx` to display real diagnostics (actual weak areas, real planned load, genuine exam countdowns).
+### Phase 1: Real-State Aggregator & Dynamic Planning Pipeline ✅
+- [x] Create `src/lib/academicState.ts`: Queries Dexie for unified chapter mastery, active mistake counts, nearest exams, and energy metrics.
+- [x] Connect `planningEngine.ts` to `getUnifiedAcademicState()` so recommendations reflect real student data.
+- [x] Update `AiMentorCard.tsx` to display real diagnostics (actual weak areas, real planned load, genuine exam countdowns).
 
-### Phase 2: Smarter Exam Weightage & ROI Priority Scoring
-- [ ] Add `weightage` and `tier` (High / Core / Ancillary) to `curriculumData.ts` for JEE (Physics/Chem/Math) and CS (DSA/ML/Systems).
-- [ ] Update priority algorithm with weightage-adjusted Expected Return per Study Hour.
-- [ ] Factor in mistake types: `conceptual` mistakes yield deep review blocks; `calculation` mistakes yield timed speed tests.
+### Phase 2: Smarter Exam Weightage & ROI Priority Scoring ✅
+- [x] Add `weightage` and `tier` (High / Core / Ancillary) to `curriculumData.ts` for JEE (Physics/Chem/Math) and CS (DSA/ML/Systems).
+- [x] Update priority algorithm with weightage-adjusted Expected Return per Study Hour.
+- [x] Factor in mistake types: `conceptual` mistakes yield deep review blocks; `calculation` mistakes yield timed speed tests.
 
-### Phase 3: Adaptive Spaced Revision & Auto-Scheduling
-- [ ] Implement FSRS / SuperMemo-style review scheduler with memory stability scoring.
-- [ ] Auto-populate due spaced revisions directly into the planner's Evening slot.
+### Phase 3: Adaptive Spaced Revision & Auto-Scheduling ✅
+- [x] Implement FSRS / SuperMemo-style review scheduler with memory stability scoring.
+- [x] Auto-populate due spaced revisions directly into the planner's Evening slot with 3-grade recall chamber (`Again`, `Hard`, `Good`).
 
-### Phase 4: Cognitive Energy & Anti-Burnout Intelligence
-- [ ] Connect Daily Reflection outputs (sleep, energy, blockers) to dynamically scale daily capacity.
-- [ ] Add proactive mentor warnings when task load exceeds safe cognitive limits.
+### Phase 4: Cognitive Energy & Anti-Burnout Intelligence ✅
+- [x] Connect Daily Reflection outputs (sleep, energy, blockers) to dynamically scale daily capacity.
+- [x] Add proactive mentor warnings and automatic study load throttling when sleep or energy is critically low.
+
+### Phase 5: Cross-Device State Synchronization & PWA Hardening ✅
+- [x] **Universal RFC 4122 v4 UUID Compliance (`src/lib/uuid.ts`):** Standardized all entity ID generation across tasks, exams, mistakes, and revisions, resolving PostgreSQL type mismatches.
+- [x] **Automated Bi-Directional Reconciliation (`src/lib/syncService.ts`):** Automatic migration engine that pushes local offline mutations to Supabase and pulls remote updates down to client Dexie storage upon login.
+- [x] **Starter Task Firewall:** Enforces strict boundary between unauthenticated mock demo tasks and persistent user data, eliminating zombie task resurrection.
+- [x] **Cross-Device Curriculum & Deletion Sync:** Propagates user-hidden subjects and custom disciplines across devices using Supabase `event_log` preference streaming.
+- [x] **Single-Execution Sync Guards:** Prevents screen flickering and redundant re-render cascades using idempotent lifecycle references (`hasInitializedRef`, `hasSyncedRef`).
+- [x] **Drift-Proof Focus Engine & Screen WakeLock (`src/components/FocusTimerModal.tsx`):** Mitigates mobile background tab throttling via timestamp-delta calculation ($\Delta t = \text{Date.now()} - t_{\text{start}}$) and prevents device sleep during deep work sessions using the W3C Screen WakeLock API.
+
+---
+
+## 5. Architectural Quality Matrix
+
+| Dimension | MVP Status | Current v2 Production State |
+| :--- | :--- | :--- |
+| **Offline Resilience** | Fragile (silent failure on type error) | Resilient dual-layer (Dexie cache + RFC 4122 Supabase sync) |
+| **Cross-Device Parity** | 0% (Data trapped in local browser storage) | 100% (Bidirectional cloud reconciliation across phone & PC) |
+| **Sample Task Isolation** | Leaked into persistent account state | Firewalled (`isStarterTask` filter + auto-purge on sync) |
+| **Deep Work Fidelity** | Timer froze on phone lock/timeout | Drift-proof timestamp delta + Screen WakeLock active keep-alive |
+| **Curriculum Customization** | Siloed to device `localStorage` | Cloud-persisted (Custom tables + `event_log` preference streaming) |

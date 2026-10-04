@@ -108,6 +108,18 @@ Consolidates student velocity, active backlogs, mistake taxonomies (conceptual v
 * **Direct Checkmark Toggle:** Accidentally marked a task done? Simply tap the green checkmark again — it immediately restores the task back to active and recalculates the daily Orbit ring.
 * **Instant Undo Toast:** A 6-second bottom notification bar provides an instant "Undo" button for accidental misclicks.
 
+### 7. Multi-Device Cloud Synchronization Engine (`src/lib/syncService.ts`)
+* **Zero-Loss Offline Migration:** Automatically reconciles local client state (Dexie IndexedDB and `localStorage`) with Supabase PostgreSQL upon user login.
+* **Schema Contract Normalization (`src/lib/uuid.ts`):** Guarantees strict RFC 4122 v4 UUID compliance across all mutations, preventing relational foreign-key validation failures.
+* **Starter Task Firewall:** Enforces strict boundary separation between mock demonstration tasks and authenticated user accounts, ensuring deleted tasks are never resurrected.
+* **Cross-Device Curriculum Sync:** Backs up user-deleted subjects, custom disciplines, and syllabus modifications to Supabase `event_log` and `subject` tables, guaranteeing parity between phone and PC.
+* **Single-Execution Reconciliation:** Eliminates UI flicker through idempotent lifecycle guards (`hasInitializedRef`), providing instant in-place updates without full-screen reloads.
+
+### 8. Drift-Proof Focus Engine & Screen WakeLock API (`src/components/FocusTimerModal.tsx`)
+* **Timestamp-Delta Precision:** Replaces fragile `setInterval` tick counters with real system timestamp deltas ($\Delta t = \text{Date.now()} - t_{\text{start}}$), completely immune to mobile background tab throttling or phone sleep.
+* **Page Visibility API:** Automatically detects when the phone is unlocked or the browser tab is focused (`visibilitychange`) and syncs elapsed seconds down to the exact millisecond.
+* **W3C Screen WakeLock:** Keeps the mobile display active during focused study blocks, preventing premature screen timeouts while solving problems on paper. Automatically releases the lock when paused or completed.
+
 ---
 
 ## 🔮 Product Roadmap (Upcoming Modules)
@@ -246,11 +258,14 @@ Orbit is built as an installable PWA with offline caching:
 │   │   └── ...
 │   ├── db/
 │   │   └── client.ts      # Dexie.js IndexedDB schema ('OrbitStudyOS')
-│   └── lib/               # Intelligence engines
+│   └── lib/               # Intelligence engines & sync utilities
 │       ├── academicState.ts   # Unified Academic Memory State
+│       ├── curriculumData.ts  # Curriculum taxonomy & ID resolvers
 │       ├── planningEngine.ts  # Capacity & Fatigue Shield
 │       ├── spacedRepetition.ts# FSRS / SM-2 algorithm
-│       └── supabase.ts    # Supabase Client singleton
+│       ├── syncService.ts     # Multi-device cloud sync engine
+│       ├── uuid.ts            # RFC 4122 v4 UUID generator & validator
+│       └── supabase.ts        # Supabase Client singleton
 ├── supabase/
 │   └── complete_orbit_database.sql # Consolidated 1-click master schema
 └── public/                # Static assets, icons, manifest.json
