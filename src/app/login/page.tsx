@@ -26,7 +26,7 @@ export default function LoginPage() {
 
     if (!isSupabaseConfigured) {
       setError(
-        "Supabase credentials are not configured in Vercel. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your Vercel Environment Variables and redeploy — or launch the Interactive Demo below."
+        "Supabase credentials are not configured in Vercel. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your Vercel Environment Variables and redeploy."
       );
       return;
     }
@@ -53,10 +53,7 @@ export default function LoginPage() {
           // to a protected page here would just get silently bounced back
           // to /login by middleware with zero explanation — so instead,
           // tell them plainly what to do next.
-          setNotice(
-            `Account created for ${email}. Check your inbox for a confirmation link, then log in below. ` +
-              `(If you don't see it in a minute, check spam — or your Supabase project may have email confirmation off, in which case try logging in now.)`
-          );
+          setNotice(`Confirmation link sent to ${email}. Please check your inbox.`);
           setMode('login');
         }
       } else {
@@ -115,9 +112,6 @@ export default function LoginPage() {
             </p>
             <p className="text-paper/70">
               Add <code className="text-amber bg-white/5 px-1 py-0.5 rounded">NEXT_PUBLIC_SUPABASE_URL</code> and <code className="text-amber bg-white/5 px-1 py-0.5 rounded">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to your Vercel Project Settings and redeploy.
-            </p>
-            <p className="mt-2 text-paper/80 font-medium">
-              You can test immediately with <strong>Launch Interactive Demo</strong> below!
             </p>
           </div>
         )}
@@ -222,58 +216,6 @@ export default function LoginPage() {
         >
           {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
         </button>
-
-        {/* 1-Click Sandbox / Demo Launcher */}
-        <div className="mt-8 border-t border-white/5 pt-6 text-center">
-          <div className="mb-3 flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setFocusTrack('jee_nsep');
-                localStorage.setItem('orbit_active_track', 'jee_nsep');
-              }}
-              className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
-                focusTrack === 'jee_nsep'
-                  ? 'bg-amber text-ink font-semibold'
-                  : 'bg-white/5 text-paper/60 hover:bg-white/10'
-              }`}
-            >
-              STEM & Olympiad
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setFocusTrack('college_cs_aiml');
-                localStorage.setItem('orbit_active_track', 'college_cs_aiml');
-              }}
-              className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
-                focusTrack === 'college_cs_aiml'
-                  ? 'bg-subject-physics text-ink font-semibold'
-                  : 'bg-white/5 text-paper/60 hover:bg-white/10'
-              }`}
-            >
-              CS & AI
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              document.cookie = 'orbit_demo=true; path=/; max-age=2592000';
-              if (typeof window !== 'undefined') {
-                localStorage.setItem('orbit_demo', 'true');
-                localStorage.setItem('orbit_active_track', focusTrack);
-              }
-              window.location.href = '/planner';
-            }}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber/30 bg-amber/10 py-3 text-xs font-semibold text-amber transition hover:bg-amber/20"
-          >
-            <span>⚡ Launch Interactive Demo</span>
-          </button>
-          <p className="mt-2 text-[11px] text-paper/40">
-            Preview the full learning OS without credentials.
-          </p>
-        </div>
       </div>
     </main>
   );
