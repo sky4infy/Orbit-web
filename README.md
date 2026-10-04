@@ -98,11 +98,12 @@ Consolidates student velocity, active backlogs, mistake taxonomies (conceptual v
 * Classifies errors into rigorous cognitive categories: `Conceptual`, `Calculation`, `Careless`, `Application`, or `Time Management`.
 * Automatically enrolls the underlying syllabus chapter into the spaced repetition queue upon logging an error.
 
-### 5. Strict Single-Track Isolation
-* Users are assigned strictly to **one** academic track at a time:
-  * **STEM & Olympiad Track:** Physics, Chemistry, and Mathematics with weightage tiers (High, Medium, Low).
-  * **College CS & AI-ML Track:** Data Structures & Algorithms, Machine Learning & Deep Learning, DBMS, Operating Systems & Networks.
-* Ensures total isolation: switching tracks dynamically filters your chapter progress, active recall queues, and daily tasks with zero cross-contamination.
+### 5. Onboarding Track Lock-In & Isolation
+* Academic focus track is selected **once during account signup**:
+  * **STEM & Olympiad Track:** Physics, Chemistry, and Mathematics calibrated to JEE Main, Advanced, and NSEP.
+  * **College CS & AI-ML Track:** Data Structures & Algorithms, Machine Learning & Deep Learning, Web Systems, and Core Computer Science.
+* **Locked Inside the App:** Track selection controls are permanently removed from inside the application. The Account & Preferences page displays a locked, read-only credential badge so syllabus state cannot be accidentally corrupted or toggled mid-preparation.
+* **Auto-Recovery Engine:** The curriculum loader actively verifies that custom subjects belong to the student's chosen track and automatically heals any accidental legacy switches.
 
 ### 6. Multi-Surface Task Undo Protection
 * **Direct Checkmark Toggle:** Accidentally marked a task done? Simply tap the green checkmark again — it immediately restores the task back to active and recalculates the daily Orbit ring.

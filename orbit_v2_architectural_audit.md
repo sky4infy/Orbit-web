@@ -169,6 +169,16 @@ Due revisions in `db.revisions` must automatically show up as suggested tasks in
 - [x] **Drift-Proof Focus Engine & Screen WakeLock (`src/components/FocusTimerModal.tsx`):** Mitigates mobile background tab throttling via timestamp-delta calculation ($\Delta t = \text{Date.now()} - t_{\text{start}}$) and prevents device sleep during deep work sessions using the W3C Screen WakeLock API.
 - [x] **Test Milestone Lifecycle & Edit Capabilities (`src/app/week/page.tsx`, `src/components/EditExamModal.tsx`):** Eliminated sample exam resurrection on page reload for authenticated users (`getHiddenSampleExams`, zero-state fallback suppression), and introduced full modal-based test editing (name, category, target date, linked syllabus chapters) with bidirectional Dexie-Supabase sync.
 
+### Phase 6: Academic Focus Track Integrity & Cross-Tab Connectivity ✅
+- [x] **Signup-Only Track Configuration:** Track selection is strictly bound to initial account onboarding (`/login`). Removed all interactive track-switching buttons from `/profile` and deleted the orphaned `TrackSwitcher.tsx` component to prevent accidental syllabus corruption.
+- [x] **Automatic Track Auto-Recovery (`src/app/journey/page.tsx`):** Added proactive track self-healing that detects custom CS & AI subjects and automatically restores `college_cs_aiml` if an accidental JEE toggle occurred, synchronizing user metadata to Supabase.
+- [x] **Dual Name & ID Deletion Shield:** Enhanced `deleteSubject` and `getSubjectProgress` to filter hidden/deleted subjects by both database UUID and lowercased name (`physics`, `chemistry`, `mathematics`), guaranteeing default seed subjects never leak into customized student profiles.
+- [x] **Cross-Tab Deep Linking:**
+  - `BottomNav.tsx`: Retains active indicator on `/journey` when drilling into subroutes (`/journey/[chapterId]`).
+  - `ChapterDetailPage`: Direct one-tap jump to `/mistakes` from chapter error tallies.
+  - `MistakeCard`: Tapping a mistake's chapter navigates straight to `/journey/[chapterId]` notes.
+  - Modal reliability: Ensured `AddTaskModal`, `AddExamModal`, and `LogMistakeModal` operate seamlessly with offline user ID fallbacks.
+
 ---
 
 ## 5. Architectural Quality Matrix
@@ -181,3 +191,5 @@ Due revisions in `db.revisions` must automatically show up as suggested tasks in
 | **Test Milestone Isolation** | Sample tests resurrected on reload; read-only | Firewalled (`hidden_sample_exams`), editable & bi-directionally cloud-synced |
 | **Deep Work Fidelity** | Timer froze on phone lock/timeout | Drift-proof timestamp delta + Screen WakeLock active keep-alive |
 | **Curriculum Customization** | Siloed to device `localStorage` | Cloud-persisted (Custom tables + `event_log` preference streaming) |
+| **Track Boundary Integrity** | Interactive switcher in profile caused syllabus desync | Locked to signup onboarding; read-only badge in app; auto-recovery engine |
+| **Cross-Tab Linkage** | Siloed pages requiring manual navigation | Full bi-directional deep linking between Planner, Journey, and Mistake Vault |
