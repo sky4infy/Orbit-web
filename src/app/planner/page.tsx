@@ -26,9 +26,11 @@ import { FocusTimerModal } from '@/components/FocusTimerModal';
 import { SkipTaskModal } from '@/components/SkipTaskModal';
 import { CalibratePlanModal } from '@/components/CalibratePlanModal';
 import { AiMentorCard } from '@/components/AiMentorCard';
+import { getDueRevisions, type DueRevisionRow } from '@/api/revisions';
+import { RevisionSession } from '@/components/RevisionSession';
 import { getCurriculumChapters, getStarterTasks } from '@/lib/curriculumData';
 import { saveLocalTask } from '@/lib/db';
-import { Moon, Clock, Sparkles, Flame, Trophy, Plus } from 'lucide-react';
+import { Moon, Clock, Sparkles, Flame, Trophy, Plus, RotateCcw, ArrowRight } from 'lucide-react';
 
 const SLOT_ORDER: TimeSlot[] = ['morning', 'afternoon', 'evening', 'night'];
 
@@ -79,6 +81,8 @@ export default function PlannerPage() {
   const [focusTimerOpen, setFocusTimerOpen] = useState(false);
   const [focusTask, setFocusTask] = useState<TaskWithChapter | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [dueRevisions, setDueRevisions] = useState<DueRevisionRow[]>([]);
+  const [revisionSessionOpen, setRevisionSessionOpen] = useState(false);
 
   // Load track preference once from localStorage
   useEffect(() => {
@@ -102,9 +106,14 @@ export default function PlannerPage() {
         withTimeout(getStreak(uid)),
         withTimeout(getLevelInfo(uid)),
         withTimeout(getDisplayName(uid)),
+        withTimeout(getDueRevisions(uid, date)),
       ]);
 
-      const [taskRows, chapterRows, streakCount, levelInfo, displayName] = results;
+      const [taskRows, chapterRows, streakCount, levelInfo, displayName, dueRevRows] = results;
+
+      if (dueRevRows && dueRevRows.status === 'fulfilled') {
+        setDueRevisions(dueRevRows.value);
+      }
 
       if (taskRows.status === 'fulfilled' && taskRows.value.length > 0) {
         setTasks(taskRows.value);
@@ -396,6 +405,36 @@ export default function PlannerPage() {
             onOpenFocusTimer={handleStartMission}
           />
 
+          {/* Spaced Revision Due Banner (Zero Forgetting Curve Decay) */}
+          {dueRevisions.length > 0 && (
+            <div className="mb-6 rounded-2xl border border-rust/20 bg-gradient-to-r from-rust/10 via-ink-50 to-ink p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rust/20 text-rust shadow-sm">
+                    <RotateCcw size={18} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-semibold text-paper">Spaced Revision Due ({dueRevisions.length})</h4>
+                      <span className="rounded-full bg-rust/20 px-2 py-0.5 text-[9px] font-mono text-rust">Decay Risk</span>
+                    </div>
+                    <p className="text-[11px] text-paper/50">
+                      {dueRevisions[0].chapter_name} {dueRevisions.length > 1 ? `+ ${dueRevisions.length - 1} more` : ''}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setRevisionSessionOpen(true)}
+                  className="flex items-center gap-1.5 rounded-xl bg-rust px-3 py-1.5 text-xs font-semibold text-paper shadow-sm hover:brightness-110 active:scale-95 transition"
+                >
+                  <span>Active Recall</span>
+                  <ArrowRight size={13} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Daily Mission Blocks (Morning, Afternoon, Evening, Night) */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3 px-1">
@@ -525,6 +564,19 @@ export default function PlannerPage() {
         onClose={() => setReflectionOpen(false)}
         onSaved={refresh}
       />
+
+      {/* Interactive Active Recall Modal */}
+      {revisionSessionOpen && (
+        <RevisionSession
+          userId={userId ?? 'local-user'}
+          queue={dueRevisions}
+          onClose={() => setRevisionSessionOpen(false)}
+          onFinished={() => {
+            setRevisionSessionOpen(false);
+            refresh();
+          }}
+        />
+      )}
 
       {/* Undo Toast */}
       <UndoToast toast={toast} onDismiss={() => setToast(null)} />
