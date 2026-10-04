@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- Background Canvas -->
+    <radialGradient id="bg" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1A2238" />
+      <stop offset="100%" stop-color="#080C14" />
+    </radialGradient>
+
+    <!-- Solar Orbit Arc Gradient -->
+    <linearGradient id="orbitRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="45%" stop-color="#FB923C" />
+      <stop offset="85%" stop-color="#F43F5E" />
+      <stop offset="100%" stop-color="#E11D48" />
+    </linearGradient>
+
+    <!-- Core Sun Gradient -->
+    <radialGradient id="sunCore" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FEF08A" />
+      <stop offset="35%" stop-color="#F59E0B" />
+      <stop offset="85%" stop-color="#D97706" />
+      <stop offset="100%" stop-color="#B45309" />
+    </radialGradient>
+
+    <!-- Corona Aura Glow -->
+    <radialGradient id="sunAura" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Orbit Glow Filter -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Deep Obsidian Squircle Container -->
+  <rect width="512" height="512" rx="120" fill="url(#bg)" />
+  <rect width="510" height="510" x="1" y="1" rx="119" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2" />
+
+  <!-- Corona Atmospheric Glow Behind Core -->
+  <circle cx="256" cy="256" r="140" fill="url(#sunAura)" />
+
+  <!-- Back Half of Orbital Ellipse (Tilted at -30 degrees) -->
+  <g transform="rotate(-30 256 256)">
+    <!-- Ambient orbit track -->
+    <ellipse cx="256" cy="256" rx="200" ry="78" stroke="url(#orbitRing)" stroke-width="32" stroke-linecap="round" filter="url(#glow)" opacity="0.4" />
+    <ellipse cx="256" cy="256" rx="200" ry="78" stroke="url(#orbitRing)" stroke-width="28" stroke-linecap="round" />
+  </g>
+
+  <!-- Central Celestial Nucleus (The Knowledge Core) -->
+  <circle cx="256" cy="256" r="82" fill="url(#sunCore)" filter="url(#glow)" />
+  <circle cx="256" cy="256" r="80" fill="url(#sunCore)" />
+
+  <!-- Front Arc Highlight / Dynamic Light Streak -->
+  <g transform="rotate(-30 256 256)">
+    <!-- High-energy front arc overlay -->
+    <path d="M 120,285 A 200,78 0 0,0 420,240" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-opacity="0.85" />
+    
+    <!-- Active Focus Node / Satellite -->
+    <circle cx="430" cy="235" r="26" fill="#FFFFFF" filter="url(#glow)" />
+    <circle cx="430" cy="235" r="18" fill="#FDE047" />
+  </g>
+</svg>

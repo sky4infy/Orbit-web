@@ -13,6 +13,14 @@ export const metadata: Metadata = {
   title: 'Orbit — Study Planner',
   description: 'Adaptive study planner: plan, revise, and learn from mistakes in one loop.',
   manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Orbit' },
 };
 

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
+import { OrbitLogo } from '@/components/OrbitLogo';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import type { TrackType } from '@/types/database.types';
 
@@ -99,7 +100,7 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2">
-          <OrbitMark />
+          <OrbitLogo size={56} className="shadow-2xl rounded-2xl mb-1" />
           <h1 className="font-display text-3xl font-medium tracking-tight">Orbit</h1>
           <p className="text-sm text-paper/60">
             {mode === 'login' ? 'Sign in to your learning workspace' : 'Create your academic profile'}
@@ -223,16 +224,5 @@ export default function LoginPage() {
         </button>
       </div>
     </main>
-  );
-}
-
-// Signature element: the orbit mark. A dot in steady orbit — the same
-// motif used for the daily-completion ring on the planner screen.
-function OrbitMark() {
-  return (
-    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-      <circle cx="20" cy="20" r="15" stroke="#F0A868" strokeWidth="1.5" opacity="0.5" />
-      <circle cx="20" cy="5" r="3" fill="#F0A868" />
-    </svg>
   );
 }
