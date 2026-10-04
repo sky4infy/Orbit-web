@@ -92,10 +92,10 @@ export async function getMistakesList(userId: string): Promise<MistakeRow[]> {
           .eq('user_id', userId)
           .order('resolved', { ascending: true })
           .order('created_at', { ascending: false }),
-        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 800)),
+        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000)),
       ]);
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         for (const m of data as any[]) {
           await addLocalMistake({
             id: m.id,

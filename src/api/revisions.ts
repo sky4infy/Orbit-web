@@ -86,8 +86,8 @@ export async function getDueRevisions(userId: string, onOrBefore: string, active
   // 1. Instant local read from IndexedDB (0ms latency)
   let localList = await getLocalRevisions(userId);
 
-  // If local revision list is totally empty, seed starter items for this track
-  if (localList.length === 0) {
+  // If local revision list is totally empty and unauthenticated, seed starter items for this track
+  if (localList.length === 0 && !userId) {
     const starters = getStarterRevisions(userId, resolvedTrack);
     for (const st of starters) {
       await saveLocalRevision(st);
@@ -129,10 +129,10 @@ export async function getDueRevisions(userId: string, onOrBefore: string, active
           .eq('user_id', userId)
           .lte('due_date', onOrBefore)
           .order('due_date', { ascending: true }),
-        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 800)),
+        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000)),
       ]);
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         for (const r of data as any[]) {
           await saveLocalRevision({
             id: r.id,
