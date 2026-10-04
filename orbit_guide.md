@@ -49,9 +49,14 @@ Orbit is architected with clean abstraction boundaries to accommodate these plan
 The Planner is your primary daily cockpit. You spend 90% of your active study day on this screen. It eliminates decision fatigue by showing you exactly what to study right now.
 
 ### 1. Managing Daily Tasks
-* **Add a Mission:** Click **"+ Add Task"**. Enter a title (e.g., *"Solve 25 Rotational Dynamics MCQs"*), choose a subject/chapter, assign a time slot (Morning, Afternoon, Evening), and set estimated minutes.
-* **Check Off Completed Work:** Tap the circle next to any task. Completed tasks trigger positive reinforcement, increment XP, and feed the daily completion ring.
-* **Reschedule or Move:** Swipe or click task options to move incomplete tasks to tomorrow without breaking your streak.
+* **Add a Mission:** Click the round orange **"+"** button at the bottom-right corner. Enter a title (e.g., *"Dynamic Programming: 0/1 Knapsack"*), choose a subject/chapter, assign a time slot (Morning, Afternoon, Evening), and set estimated minutes.
+* **Check Off Completed Work:** Tap the circle next to any task. Completed tasks trigger positive reinforcement, increment XP, and fill the daily completion ring.
+* **Marked Done by Mistake? (Two-Way Undo):**
+  1. *Way 1 (Direct Tap):* Simply **tap the green checkmark again** on that completed task at any time to uncheck it and bring it right back to active.
+  2. *Way 2 (Instant Undo):* Right after checking a task, a bar appears at the bottom with an **Undo** button — click it to revert instantly.
+* **Remove or Delete a Task:** Tap the **Pencil (Edit)** icon on that task row $\rightarrow$ click the red **`Delete Task`** button to remove it completely.
+* **Skip with Reason:** Click the **Skip (`>>`)** icon to log why a task wasn't finished without feeling guilty or breaking your streak.
+* **Reschedule to Tomorrow:** Move tasks to tomorrow smoothly with zero planning debt.
 
 ### 2. The Daily Orbit Ring
 The glowing circular ring at the top displays your percentage completion for the current calendar date. Hitting 100% awards bonus streak protection and unlocks daily mastery levels.
