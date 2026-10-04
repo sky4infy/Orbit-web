@@ -25,7 +25,9 @@ import { DailyReflectionModal } from '@/components/DailyReflectionModal';
 import { FocusTimerModal } from '@/components/FocusTimerModal';
 import { SkipTaskModal } from '@/components/SkipTaskModal';
 import { CalibratePlanModal } from '@/components/CalibratePlanModal';
+import { AiMentorCard } from '@/components/AiMentorCard';
 import { getCurriculumChapters, getStarterTasks } from '@/lib/curriculumData';
+import { saveLocalTask } from '@/lib/db';
 import { Moon, Clock, Sparkles, Flame, Trophy, Plus } from 'lucide-react';
 
 const SLOT_ORDER: TimeSlot[] = ['morning', 'afternoon', 'evening', 'night'];
@@ -258,7 +260,7 @@ export default function PlannerPage() {
   const nextTask = tasksBySlot.flatMap((g) => g.items).find((t) => t.status === 'pending') ?? null;
   const now = new Date();
 
-  function handleApplyCalibratedPlan(suggested: any[]) {
+  async function handleApplyCalibratedPlan(suggested: any[]) {
     const newTasks: TaskWithChapter[] = suggested.map((s, idx) => ({
       id: `calibrated-${Date.now()}-${idx}`,
       title: s.title,
@@ -278,6 +280,28 @@ export default function PlannerPage() {
       },
     }));
     setTasks(newTasks);
+
+    // Persist immediately into local Dexie
+    for (const t of newTasks) {
+      await saveLocalTask({
+        id: t.id,
+        user_id: userId || '',
+        chapter_id: t.chapter?.id ?? '',
+        title: t.title,
+        scheduled_date: date,
+        time_slot: t.time_slot,
+        effort_level: t.effort_level,
+        priority: t.priority,
+        position: t.position,
+        status: t.status,
+        incomplete_reason: t.incomplete_reason,
+        estimated_minutes: t.estimated_minutes,
+        actual_minutes: t.actual_minutes,
+        created_at: new Date().toISOString(),
+        completed_at: null,
+      });
+    }
+
     setToast({
       id: `calibrated-toast-${Date.now()}`,
       message: '✨ Calibrated day plan applied to your orbit!',
@@ -360,6 +384,17 @@ export default function PlannerPage() {
               onStart={() => handleStartMission(nextTask)}
             />
           </div>
+
+          {/* AI Mentor Strategic Guidance Card */}
+          <AiMentorCard
+            userId={userId ?? ''}
+            track={track}
+            date={date}
+            tasks={tasks}
+            chapters={chapters}
+            onApplyPlan={handleApplyCalibratedPlan}
+            onOpenFocusTimer={handleStartMission}
+          />
 
           {/* Daily Mission Blocks (Morning, Afternoon, Evening, Night) */}
           <div className="mb-6">
@@ -463,6 +498,7 @@ export default function PlannerPage() {
 
       {/* Calibrate Plan Modal (On demand, leaves desk clean) */}
       <CalibratePlanModal
+        userId={userId ?? ''}
         track={track}
         date={date}
         tasks={tasks}
