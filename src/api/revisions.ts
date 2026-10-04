@@ -18,13 +18,42 @@ export interface DueRevisionRow {
 }
 
 /**
- * Starter seed revisions when student enters Orbit fresh
+ * Starter seed revisions when student enters Orbit fresh, tailored strictly to their single track
  */
-function getStarterRevisions(userId: string): LocalRevision[] {
+function getStarterRevisions(userId: string, activeTrack = 'jee_nsep'): LocalRevision[] {
   const today = format(new Date(), 'yyyy-MM-dd');
+  if (activeTrack === 'college_cs_aiml') {
+    return [
+      {
+        id: 'rev-seed-cs-1',
+        user_id: userId,
+        chapter_id: 'cs-dsa-7', // Dynamic Programming
+        due_date: today,
+        interval_days: 1,
+        review_count: 1,
+        success_count: 1,
+        failure_count: 0,
+        last_reviewed_at: null,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'rev-seed-cs-2',
+        user_id: userId,
+        chapter_id: 'cs-dsa-4', // Binary Trees & BST
+        due_date: today,
+        interval_days: 3,
+        review_count: 1,
+        success_count: 1,
+        failure_count: 0,
+        last_reviewed_at: null,
+        created_at: new Date().toISOString(),
+      },
+    ];
+  }
+
   return [
     {
-      id: 'rev-seed-1',
+      id: 'rev-seed-jee-1',
       user_id: userId,
       chapter_id: 'jee-phy-6', // Rotational Dynamics
       due_date: today,
@@ -36,9 +65,9 @@ function getStarterRevisions(userId: string): LocalRevision[] {
       created_at: new Date().toISOString(),
     },
     {
-      id: 'rev-seed-2',
+      id: 'rev-seed-jee-2',
       user_id: userId,
-      chapter_id: 'cs-dsa-7', // Dynamic Programming
+      chapter_id: 'jee-mat-5', // Definite Integration
       due_date: today,
       interval_days: 3,
       review_count: 1,
@@ -50,24 +79,27 @@ function getStarterRevisions(userId: string): LocalRevision[] {
   ];
 }
 
-export async function getDueRevisions(userId: string, onOrBefore: string): Promise<DueRevisionRow[]> {
+export async function getDueRevisions(userId: string, onOrBefore: string, activeTrack?: string): Promise<DueRevisionRow[]> {
+  const resolvedTrack = activeTrack || (typeof window !== 'undefined' ? localStorage.getItem('orbit_active_track') : 'jee_nsep') || 'jee_nsep';
+
   // 1. Instant local read from IndexedDB (0ms latency)
   let localList = await getLocalRevisions(userId);
 
-  // If local revision list is totally empty, seed starter items
+  // If local revision list is totally empty, seed starter items for this track
   if (localList.length === 0) {
-    const starters = getStarterRevisions(userId);
+    const starters = getStarterRevisions(userId, resolvedTrack);
     for (const st of starters) {
       await saveLocalRevision(st);
     }
     localList = starters;
   }
 
-  const chapters = getCurriculumChapters('all');
+  const chapters = getCurriculumChapters((resolvedTrack as any) || 'all');
   const chapterMap = new Map(chapters.map((c) => [c.id, c]));
 
   const localDue: DueRevisionRow[] = localList
     .filter((r) => r.due_date <= onOrBefore)
+    .filter((r) => chapterMap.has(r.chapter_id))
     .map((r) => {
       const chap = chapterMap.get(r.chapter_id);
       return {
@@ -79,7 +111,7 @@ export async function getDueRevisions(userId: string, onOrBefore: string): Promi
         failure_count: r.failure_count,
         chapter_id: r.chapter_id,
         chapter_name: chap?.name ?? 'Key Concept Drill',
-        subject_name: chap?.subjectName ?? 'STEM',
+        subject_name: chap?.subjectName ?? (resolvedTrack === 'college_cs_aiml' ? 'Computer Science' : 'Physics'),
       };
     });
 

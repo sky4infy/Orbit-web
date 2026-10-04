@@ -106,7 +106,7 @@ export default function PlannerPage() {
         withTimeout(getStreak(uid)),
         withTimeout(getLevelInfo(uid)),
         withTimeout(getDisplayName(uid)),
-        withTimeout(getDueRevisions(uid, date)),
+        withTimeout(getDueRevisions(uid, date, activeTrack)),
       ]);
 
       const [taskRows, chapterRows, streakCount, levelInfo, displayName, dueRevRows] = results;
