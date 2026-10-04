@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -116,14 +116,10 @@ export default function JourneyPage() {
   const [subjects, setSubjects] = useState<SubjectProgressRow[]>(initialData.subRows);
   const [openSubject, setOpenSubject] = useState<string | null>(initialData.subRows[0]?.subject_id ?? null);
   const [chaptersBySubject, setChaptersBySubject] = useState<Record<string, ChapterStatusRow[]>>(initialData.grouped);
+  const hasSyncedRef = useRef(false);
 
   const reloadCurriculum = useCallback(async (activeTrack = track) => {
-    // 1. Instant local render
-    const data = buildCurriculumState(activeTrack);
-    setSubjects(data.subRows);
-    setChaptersBySubject(data.grouped);
-
-    // 2. Fetch live joined data from Supabase
+    // Fetch live joined data from Supabase smoothly without blanking existing UI
     try {
       const [subRows, chapRows] = await Promise.all([
         getSubjectProgress(activeTrack),
@@ -167,23 +163,21 @@ export default function JourneyPage() {
     }
   }, [track, reloadCurriculum]);
 
-  // Sync all user data on load
+  // Sync all user data ONCE on initial load / login
   useEffect(() => {
-    if (userId) {
+    if (!userId) {
+      reloadCurriculum(track);
+      return;
+    }
+
+    if (!hasSyncedRef.current) {
+      hasSyncedRef.current = true;
+      reloadCurriculum(track);
       syncAllUserData(userId).then(() => {
         reloadCurriculum(track);
       });
-    } else {
-      reloadCurriculum(track);
     }
   }, [userId, track, reloadCurriculum]);
-
-  // Listen for sync completions
-  useEffect(() => {
-    const handleSync = () => reloadCurriculum(track);
-    window.addEventListener('orbit:sync_completed', handleSync);
-    return () => window.removeEventListener('orbit:sync_completed', handleSync);
-  }, [track, reloadCurriculum]);
 
   const handleManualSync = async () => {
     if (!userId || isSyncing) return;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import {
@@ -101,8 +101,10 @@ export default function PlannerPage() {
     ]);
   }
 
-  const load = useCallback(async (uid: string, activeTrack = track) => {
-    setLoading(true);
+  const hasInitializedRef = useRef(false);
+
+  const load = useCallback(async (uid: string, activeTrack = track, showLoader = false) => {
+    if (showLoader) setLoading(true);
     try {
       const results = await Promise.allSettled([
         withTimeout(getTasksForDate(uid, date), 6000),
@@ -149,44 +151,40 @@ export default function PlannerPage() {
         setTasks(getStarterTasks(activeTrack, date));
       }
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, [date, track]);
 
   useEffect(() => {
+    if (authLoading) return;
+
     if (!userId) {
-      if (!authLoading) {
-        setTasks(getStarterTasks(track, date));
-        const fallback = getCurriculumChapters(track).map((c) => ({
-          id: c.id,
-          name: c.name,
-          subjectId: c.subjectId,
-          subjectName: c.subjectName,
-          confidence: c.confidence,
-          status: c.status,
-          unresolvedMistakes: c.unresolvedMistakes,
-        }));
-        setChapters(fallback);
-        setLoading(false);
-      }
+      setTasks(getStarterTasks(track, date));
+      const fallback = getCurriculumChapters(track).map((c) => ({
+        id: c.id,
+        name: c.name,
+        subjectId: c.subjectId,
+        subjectName: c.subjectName,
+        confidence: c.confidence,
+        status: c.status,
+        unresolvedMistakes: c.unresolvedMistakes,
+      }));
+      setChapters(fallback);
+      setLoading(false);
       return;
     }
 
-    // Trigger cloud synchronization in the background
-    syncAllUserData(userId).then(() => {
-      load(userId, track);
-    });
-
-    load(userId, track);
+    // Only run cloud sync and initial load ONCE when logged in
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      // 1. Initial quick load (no screen-clearing loader)
+      load(userId, track, false);
+      // 2. Background sync once during initial load
+      syncAllUserData(userId).then(() => {
+        load(userId, track, false);
+      });
+    }
   }, [userId, authLoading, load, track, date]);
-
-  // Listen for sync completions to update planner seamlessly
-  useEffect(() => {
-    if (!userId) return;
-    const handleSync = () => load(userId, track);
-    window.addEventListener('orbit:sync_completed', handleSync);
-    return () => window.removeEventListener('orbit:sync_completed', handleSync);
-  }, [userId, load, track]);
 
   const refresh = useCallback(() => {
     if (userId) load(userId, track);
