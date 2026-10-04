@@ -17,17 +17,14 @@ Installable as a PWA on phone or laptop — no App Store needed
 ## Setup
 
 ### 1. Supabase project
-- New project on supabase.com
-- SQL Editor → run, **in this order**:
-  1. `supabase/schema.sql`
-  2. `supabase/migrations/002_journey.sql`
-  3. `supabase/migrations/003_exams.sql`
-  4. `supabase/seed.sql` — **required**, not optional. This seeds a starter
-     Physics/Chemistry/Maths/Biology syllabus. Without it every "Add"
-     button in the app (task, mistake, test) stays disabled, because
-     there are no chapters to attach anything to. Edit the chapter lists
-     in this file first if you want a different syllabus — it's plain
-     SQL, safe to re-run.
+- Create a project on [supabase.com](https://supabase.com).
+- Go to **SQL Editor** → create a new query.
+- Copy and run **`supabase/complete_orbit_database.sql`** (1-Click Setup).
+  This automatically sets up:
+  - All tables with RLS policies and auth triggers.
+  - Multi-track error taxonomies & exam readiness views.
+  - Complete curriculum seeds for both **JEE/NSEP** and **College CS / AI-ML**.
+  - Safe to re-run at any time (idempotent).
 - Settings → API → copy the **Project URL** and **anon public key**.
   The Project URL must be the bare `https://xxxxx.supabase.co` — do
   **not** append `/rest/v1/` or any other path to it; the Supabase SDK
