@@ -77,11 +77,27 @@ function buildCurriculumState(activeTrack: TrackType) {
   return { subRows, grouped };
 }
 
-function withTimeout<T>(promise: Promise<T>, ms = 800): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Network timeout')), ms)),
   ]);
+}
+
+function getCachedCurriculum(track: TrackType): { subRows: SubjectProgressRow[]; grouped: Record<string, ChapterStatusRow[]> } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`orbit_cached_curriculum_${track}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.subRows) && parsed.grouped) {
+        return parsed;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export default function JourneyPage() {
@@ -108,26 +124,28 @@ export default function JourneyPage() {
   } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Eager initialization — renders user's track immediately (0ms delay)
+  // Eager initialization — load real cached user data (0ms delay) or show clean loading skeleton (never sample mock data)
   const initialTrack: TrackType = typeof window !== 'undefined'
     ? ((localStorage.getItem('orbit_active_track') as TrackType) || 'jee_nsep')
     : 'jee_nsep';
-  const initialData = useMemo(() => buildCurriculumState(initialTrack), [initialTrack]);
-  const [subjects, setSubjects] = useState<SubjectProgressRow[]>(initialData.subRows);
-  const [openSubject, setOpenSubject] = useState<string | null>(initialData.subRows[0]?.subject_id ?? null);
-  const [chaptersBySubject, setChaptersBySubject] = useState<Record<string, ChapterStatusRow[]>>(initialData.grouped);
+
+  const cachedData = useMemo(() => getCachedCurriculum(initialTrack), [initialTrack]);
+
+  const [subjects, setSubjects] = useState<SubjectProgressRow[]>(() => cachedData?.subRows ?? []);
+  const [openSubject, setOpenSubject] = useState<string | null>(() => cachedData?.subRows[0]?.subject_id ?? null);
+  const [chaptersBySubject, setChaptersBySubject] = useState<Record<string, ChapterStatusRow[]>>(() => cachedData?.grouped ?? {});
+  const [loading, setLoading] = useState<boolean>(() => !cachedData);
   const hasSyncedRef = useRef(false);
 
   const reloadCurriculum = useCallback(async (activeTrack = track) => {
-    // Fetch live joined data from Supabase smoothly without blanking existing UI
     try {
       const [subRows, chapRows] = await Promise.all([
-        getSubjectProgress(activeTrack),
-        getChaptersOverview(activeTrack),
+        withTimeout(getSubjectProgress(activeTrack), 6000),
+        withTimeout(getChaptersOverview(activeTrack), 6000),
       ]);
 
+      const grouped: Record<string, ChapterStatusRow[]> = {};
       if (chapRows && chapRows.length > 0) {
-        const grouped: Record<string, ChapterStatusRow[]> = {};
         for (const c of chapRows) {
           grouped[c.subjectId] ??= [];
           grouped[c.subjectId].push({
@@ -148,22 +166,55 @@ export default function JourneyPage() {
 
       if (subRows && subRows.length > 0) {
         setSubjects(subRows);
+        setOpenSubject((prev) => prev || subRows[0]?.subject_id || null);
+
+        // Cache real user curriculum for 0ms instant display on subsequent tab visits
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(
+              `orbit_cached_curriculum_${activeTrack}`,
+              JSON.stringify({ subRows, grouped })
+            );
+          } catch {}
+        }
+      } else if (!userId) {
+        // Fallback demo for unauthenticated guest visitors only
+        const demo = buildCurriculumState(activeTrack);
+        setSubjects(demo.subRows);
+        setChaptersBySubject(demo.grouped);
+        setOpenSubject((prev) => prev || demo.subRows[0]?.subject_id || null);
       }
     } catch (err) {
       console.warn('Cloud curriculum fetch error:', err);
+      if (!userId && subjects.length === 0) {
+        const demo = buildCurriculumState(activeTrack);
+        setSubjects(demo.subRows);
+        setChaptersBySubject(demo.grouped);
+      }
+    } finally {
+      setLoading(false);
     }
-  }, [track]);
+  }, [track, userId, subjects.length]);
 
   // Read track preference once
   useEffect(() => {
     const saved = localStorage.getItem('orbit_active_track') as TrackType | null;
     if (saved && saved !== track) {
       setTrack(saved);
+      // Check cache for this new track
+      const trackCache = getCachedCurriculum(saved);
+      if (trackCache) {
+        setSubjects(trackCache.subRows);
+        setChaptersBySubject(trackCache.grouped);
+        setOpenSubject(trackCache.subRows[0]?.subject_id ?? null);
+      } else {
+        setLoading(true);
+      }
       reloadCurriculum(saved);
     }
   }, [track, reloadCurriculum]);
 
-  // Sync all user data ONCE on initial load / login
+  // Sync all user data on initial load
   useEffect(() => {
     if (!userId) {
       reloadCurriculum(track);
@@ -207,6 +258,24 @@ export default function JourneyPage() {
       }
       return next;
     });
+
+    setSubjects((prev) =>
+      prev.map((s) => {
+        const chaps = (chaptersBySubject[s.subject_id] ?? []).map((c) =>
+          c.chapter_id === chapterId ? { ...c, status, confidence_score: confidence } : c
+        );
+        const mastered = chaps.filter((c) => c.status === 'mastered').length;
+        const revDue = chaps.filter((c) => c.status === 'revision_due').length;
+        const avgConf =
+          chaps.length > 0 ? Math.round(chaps.reduce((acc, c) => acc + c.confidence_score, 0) / chaps.length) : 50;
+        return {
+          ...s,
+          mastered_count: mastered,
+          revision_due_count: revDue,
+          avg_confidence: avgConf,
+        };
+      })
+    );
 
     // 2. Persist local override
     saveChapterOverride(chapterId, { status, confidence });
@@ -310,7 +379,35 @@ export default function JourneyPage() {
         </div>
       </header>
 
-      {viewMode === 'orbit' ? (
+      {/* Loading Skeleton */}
+      {loading && subjects.length === 0 ? (
+        viewMode === 'orbit' ? (
+          <div className="flex flex-col items-center">
+            <div className="mb-3 text-center">
+              <h2 className="text-sm font-semibold text-paper">Celestial Mastery Map</h2>
+              <p className="text-[11px] text-paper/40">Loading syllabus coordinates...</p>
+            </div>
+            <div className="flex h-80 w-full items-center justify-center rounded-3xl border border-white/5 bg-ink-50/50 p-6 backdrop-blur-md">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 rounded-full border-2 border-amber/30 border-t-amber animate-spin" />
+                <p className="font-mono text-xs text-paper/40">Aligning orbital nodes...</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="rounded-2xl border border-white/5 bg-ink-50 p-4 animate-pulse">
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-28 rounded-md bg-white/10" />
+                  <div className="h-3 w-20 rounded-md bg-white/5" />
+                </div>
+                <div className="mt-3 h-2 w-full rounded-full bg-white/5" />
+              </div>
+            ))}
+          </div>
+        )
+      ) : viewMode === 'orbit' ? (
         /* Orbital Mastery Map Mode */
         <div className="flex flex-col items-center">
           <div className="mb-3 text-center">
@@ -323,7 +420,7 @@ export default function JourneyPage() {
             <OrbitMasteryMap chapters={allChaptersForMap} />
           </div>
         </div>
-      ) : (
+      ) : subjects.length > 0 ? (
         /* List Breakdown Mode */
         <div className="flex flex-col gap-3">
           {subjects.map((s) => {
@@ -456,6 +553,16 @@ export default function JourneyPage() {
               </div>
             );
           })}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-white/10 bg-ink-50/50 p-8 text-center">
+          <p className="text-xs text-paper/40">No subjects currently active in this track.</p>
+          <button
+            onClick={() => setAddSubjectOpen(true)}
+            className="mt-2 text-xs font-semibold text-amber hover:underline"
+          >
+            + Add a subject
+          </button>
         </div>
       )}
 

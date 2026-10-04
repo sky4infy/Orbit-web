@@ -12,7 +12,7 @@ import { useRequireAuth } from '@/lib/useRequireAuth';
 import { getCurriculumChapters } from '@/lib/curriculumData';
 import type { TrackType } from '@/types/database.types';
 
-function withTimeout<T>(promise: Promise<T>, ms = 800): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Network timeout')), ms)),
@@ -131,8 +131,8 @@ export default function MistakesPage() {
   const { userId, authLoading } = useRequireAuth();
   const [track, setTrack] = useState<TrackType>('jee_nsep');
 
-  // Eager initialization — renders immediately (0ms delay)
-  const [mistakes, setMistakes] = useState<MistakeRow[]>(() => getFallbackMistakes('jee_nsep'));
+  // Eager initialization — empty for auth users, never flash sample errors
+  const [mistakes, setMistakes] = useState<MistakeRow[]>([]);
   const [chapters, setChapters] = useState<ChapterOverview[]>(() =>
     getCurriculumChapters('jee_nsep').map((c) => ({
       id: c.id,
@@ -144,7 +144,7 @@ export default function MistakesPage() {
       unresolvedMistakes: c.unresolvedMistakes,
     }))
   );
-  const [dueRevisions, setDueRevisions] = useState<DueRevisionRow[]>(() => getFallbackRevisions('jee_nsep'));
+  const [dueRevisions, setDueRevisions] = useState<DueRevisionRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [revisionOpen, setRevisionOpen] = useState(false);
@@ -154,8 +154,6 @@ export default function MistakesPage() {
     const saved = localStorage.getItem('orbit_active_track') as TrackType | null;
     if (saved && saved !== track) {
       setTrack(saved);
-      setMistakes(getFallbackMistakes(saved));
-      setDueRevisions(getFallbackRevisions(saved));
       setChapters(
         getCurriculumChapters(saved).map((c) => ({
           id: c.id,
@@ -176,25 +174,32 @@ export default function MistakesPage() {
       try {
         const today = format(new Date(), 'yyyy-MM-dd');
         const results = await Promise.allSettled([
-          withTimeout(getMistakesList(uid), 800),
-          withTimeout(getChaptersOverview(activeTrack)),
-          withTimeout(getDueRevisions(uid, today), 800),
+          withTimeout(getMistakesList(uid), 6000),
+          withTimeout(getChaptersOverview(activeTrack), 6000),
+          withTimeout(getDueRevisions(uid, today), 6000),
         ]);
         const [mistakeRes, chapterRes, revisionRes] = results;
 
-        if (mistakeRes.status === 'fulfilled' && mistakeRes.value.length > 0) {
+        if (mistakeRes.status === 'fulfilled') {
           setMistakes(mistakeRes.value);
+        } else if (!uid) {
+          setMistakes(getFallbackMistakes(activeTrack));
         }
 
         if (chapterRes.status === 'fulfilled' && chapterRes.value.length > 0) {
           setChapters(chapterRes.value);
         }
 
-        if (revisionRes.status === 'fulfilled' && revisionRes.value.length > 0) {
+        if (revisionRes.status === 'fulfilled') {
           setDueRevisions(revisionRes.value);
+        } else if (!uid) {
+          setDueRevisions(getFallbackRevisions(activeTrack));
         }
       } catch {
-        // Fallback already active
+        if (!uid) {
+          setMistakes(getFallbackMistakes(activeTrack));
+          setDueRevisions(getFallbackRevisions(activeTrack));
+        }
       }
     },
     [track]
