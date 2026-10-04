@@ -1,112 +1,235 @@
-# Orbit — web app (Next.js + Supabase + PWA)
+# Orbit — Adaptive Academic Operating System
 
-## Architecture
+> **An intelligent, local-first Academic OS for STEM/JEE and College CS/AI-ML students.**  
+> Orbit closes the loop between daily study sessions, error logging, cognitive fatigue protection, and long-term memory retention.
+
+---
+
+## 🏛 System Architecture
+
+Orbit is engineered with a **dual-layer, local-first architecture**. It pairs zero-latency offline client state (IndexedDB via Dexie.js) with real-time multi-device cloud synchronization and relational integrity (PostgreSQL via Supabase).
+
 ```
-Next.js (App Router) + TypeScript + TailwindCSS
-Supabase (Postgres + Auth)
-Deployed on Vercel
-Installable as a PWA on phone or laptop — no App Store needed
+                      ┌─────────────────────────────────────────┐
+                      │          USER / CLIENT SURFACE          │
+                      │    Next.js 14 (App Router) + PWA UI     │
+                      └────────────────────┬────────────────────┘
+                                           │
+                                           ▼
+      ┌─────────────────────────────────────────────────────────────────────────┐
+      │                    UNIFIED ACADEMIC MEMORY ENGINE                       │
+      │                     (src/lib/academicState.ts)                          │
+      ├────────────────────────────────────┬────────────────────────────────────┤
+      │                                    │                                    │
+      ▼                                    ▼                                    ▼
+┌───────────────┐                  ┌───────────────┐                  ┌───────────────────┐
+│ FATIGUE SHIELD│                  │ FSRS RETENTION│                  │  ERROR TAXONOMY   │
+│ & CAPACITY    │                  │    ENGINE     │                  │  & AUTO-REVISION  │
+│ (Sleep/Energy)│                  │(SM-2 Adaptive)│                  │ (Root-cause Tag)  │
+└───────┬───────┘                  └───────┬───────┘                  └─────────┬─────────┘
+        │                                  │                                    │
+        └──────────────────────────────────┼────────────────────────────────────┘
+                                           │
+                                           ▼
+                    ┌──────────────────────────────────────────────┐
+                    │            DUAL PERSISTENCE LAYER            │
+                    ├──────────────────────────────┬───────────────┤
+                    │   LOCAL-FIRST (0ms Latency)  │  CLOUD SYNC   │
+                    │      IndexedDB / Dexie       │   Supabase    │
+                    │      ('OrbitStudyOS')        │  (Postgres)   │
+                    └──────────────────────────────┴───────────────┘
 ```
 
-## What you need (one-time)
-1. **Node.js LTS** — nodejs.org
-2. **Supabase account** — supabase.com (sign up, new project)
-3. **Vercel account** — vercel.com (sign up with GitHub — needed for deployment)
-4. A **GitHub account**, if you don't have one
+### Detailed Component Flow
 
-## Setup
+```mermaid
+graph TD
+    A[Student Interaction] --> B[Planner / Journey / Mistake Desk]
+    B --> C[Academic Memory Engine]
+    
+    subgraph Cognitive Intelligence
+        C --> D[Fatigue Shield: Sleep & Energy Throttling]
+        C --> E[FSRS Spaced Repetition Algorithm]
+        C --> F[Mistake Taxonomy Engine]
+    end
+    
+    subgraph Local Storage
+        D --> G[(Dexie.js / IndexedDB)]
+        E --> G
+        F --> G
+    end
 
-### 1. Supabase project
-- Create a project on [supabase.com](https://supabase.com).
-- Go to **SQL Editor** → create a new query.
-- Copy and run **`supabase/complete_orbit_database.sql`** (1-Click Setup).
-  This automatically sets up:
-  - All tables with RLS policies and auth triggers.
-  - Multi-track error taxonomies & exam readiness views.
-  - Complete curriculum seeds for both **JEE/NSEP** and **College CS / AI-ML**.
-  - Safe to re-run at any time (idempotent).
-- Settings → API → copy the **Project URL** and **anon public key**.
-  The Project URL must be the bare `https://xxxxx.supabase.co` — do
-  **not** append `/rest/v1/` or any other path to it; the Supabase SDK
-  appends its own paths (`/auth/v1/`, `/rest/v1/`, etc.) itself, so a
-  URL that already has a path on it silently breaks sign-up/login.
-- Auth → Providers → Email: for fast local testing, you can turn off
-  "Confirm email" so `signUp()` returns a usable session immediately
-  instead of requiring a verification click first.
+    subgraph Remote Cloud
+        G -.->|Background Sync| H[(Supabase Postgres)]
+        H --> I[Row Level Security RLS]
+        H --> J[Security Invoker Views]
+    end
+```
 
-### 2. Local env
+---
+
+## ⚡ Core Innovations & Features
+
+### 1. Unified Academic Memory Engine (`src/lib/academicState.ts`)
+Consolidates student velocity, active backlogs, mistake taxonomies (conceptual vs. calculation), target exam proximity, and energy profiles into a single reactive state representation.
+
+### 2. Cognitive Capacity & Fatigue Shield (`src/lib/planningEngine.ts`)
+* Automatically monitors sleep duration and energy scores.
+* When sleep is $< 6.0\text{ h}$ or energy score $\le 2/5$:
+  * **Throttles tactical load** by capping total daily hours to $4.0\text{ h}$.
+  * **Filters out high-strain problem sets** and complex conceptual tasks.
+  * **Prioritizes low-friction active recall** and light revision to prevent cognitive burnout.
+
+### 3. FSRS Adaptive Spaced Repetition (`src/lib/spacedRepetition.ts`)
+* Enhanced SM-2 / Free Spaced Repetition Scheduler.
+* Dynamically calculates recall stability, difficulty factors, and optimal review intervals:
+  $$\text{Interval}_{\text{next}} = \text{Interval}_{\text{prev}} \times \text{Ease Factor} \times \text{Grade Multiplier}$$
+* **Error Backlog Dampening:** If a chapter has high unaddressed mistake density, review intervals are automatically compressed to reinforce fragile neural pathways.
+* Features an **in-place 3-grade recall chamber** (`Again`, `Hard`, `Good`) directly on the Planner desk.
+
+### 4. Closed-Loop Mistake Book (`src/api/mistakes.ts`)
+* Classifies errors into rigorous cognitive categories: `Conceptual`, `Calculation`, `Careless`, `Application`, or `Time Management`.
+* Automatically enrolls the underlying syllabus chapter into the spaced repetition queue upon logging an error.
+
+### 5. Multi-Curriculum Tracks
+Pre-configured, out-of-the-box syllabus taxonomies:
+* **JEE / NSEP Track:** Physics, Chemistry, Mathematics with JEE exam weightage tiers (High, Medium, Low).
+* **College CS & AI-ML Track:** Data Structures & Algorithms, Machine Learning & Deep Learning, Database Management Systems, Operating Systems & Networks.
+
+---
+
+## 🗄️ Database Architecture (Supabase Postgres)
+
+The backend runs on Supabase PostgreSQL with strict Row Level Security (RLS) policies and idempotent setup:
+
+* **`profile`** — User metadata, target exams, sleep and energy preferences.
+* **`subject`** — Academic disciplines partitioned by track (`jee_nsep`, `college_cs_aiml`).
+* **`chapter`** — Complete syllabus chapters with exam weightage indicators.
+* **`user_chapter_progress`** — Personal mastery percentage, confidence score, and status lifecycle.
+* **`task`** — Daily atomic tasks with estimated minutes, priority, and energy cost.
+* **`study_session`** — Focus sessions with duration analytics.
+* **`mistake`** — Logged errors with root cause tagging, photo attachments, and resolution status.
+* **`revision`** — Spaced repetition schedule with stability, ease factors, and review counts.
+* **`reflection`** — Evening check-ins, fatigue logging, and qualitative notes.
+* **`event_log`** — Append-only behavioral event stream for deep work analytics.
+* **`exam` & `exam_chapter`** — Mock tests and upcoming milestones mapped to syllabus coverage.
+
+### Pre-computed Performance Views
+1. **`my_chapter_status`** — Dynamic chapter-level progress, mistake counts, and revision due dates.
+2. **`my_subject_progress`** — Subject-level completion percentage and confidence distribution.
+3. **`my_exam_readiness`** — Holistic syllabus readiness score weighted by exam blueprint.
+
+---
+
+## 🚀 Quickstart & Setup
+
+### Prerequisites
+* **Node.js LTS** (v18 or v20 recommended)
+* A free **[Supabase](https://supabase.com)** account
+* A free **[Vercel](https://vercel.com)** account (for production deployment)
+
+### 1. Database Initialization (1-Click)
+1. In your Supabase Project dashboard, navigate to the **SQL Editor**.
+2. Open **`supabase/complete_orbit_database.sql`** from this repository.
+3. Paste and run the entire script. It is **100% idempotent** and will:
+   * Create all 12 tables and constraints.
+   * Enable Row Level Security (RLS) with self-ownership policies.
+   * Configure auth triggers for automatic user onboarding.
+   * Seed all 7 curriculum subjects and 49 core syllabus chapters.
+
+### 2. Configure Environment Variables
+Copy `.env.example` to `.env.local`:
 ```bash
 cp .env.example .env.local
 ```
-Paste in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-`.env.local` is gitignored — never commit it.
 
-### 3. Install and run
-```bash
-npm install
-npm run dev
+Fill in your project credentials (found in Supabase Dashboard → Settings → API):
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
 ```
-Open **http://localhost:3000**.
 
-## Using it
-- `/login` — sign up (creates a Supabase auth user + a `profile` row via
-  the `handle_new_user` trigger) or log in.
-- `/planner` — today's tasks, day-completion ring, streak/level, add/edit/
-  complete/skip/move tasks.
-- `/journey` — syllabus by subject, chapter status + confidence, notes,
-  mistakes and revision info per chapter.
-- `/week` — 7-day overview, upcoming tests with syllabus-coverage tracking.
-- `/mistakes` — log mistakes, resolve them, spaced-repetition revision
-  queue (due chapters, self-assessed recall).
-- `/profile` — display name, streak, level, sign out.
+> [!CAUTION]
+> The `NEXT_PUBLIC_SUPABASE_URL` must be the bare URL (e.g. `https://xxxx.supabase.co`). Do not append `/rest/v1/`.
 
-`middleware.ts` protects all of the above behind auth and bounces signed-
-out visitors to `/login`.
+### 3. Install & Run Locally
+```bash
+# Install dependencies
+npm install
 
-## What's here
-- `supabase/schema.sql` — core schema (multi-user, RLS on every per-user
-  table, `event_log` for a full behavioral timeline, `study_session` for
-  future focus-duration analytics)
-- `supabase/migrations/002_journey.sql` — richer chapter status lifecycle
-  + `my_chapter_status` / `my_subject_progress` views
-- `supabase/migrations/003_exams.sql` — exams/tests + syllabus linking +
-  `my_exam_readiness` view
-- `supabase/seed.sql` — starter subject/chapter reference data
-- `src/api/` — one file per domain (`tasks`, `mistakes`, `revisions`,
-  `journey`, `exams`, `gamification`, `study_sessions`, `events`,
-  `profile`, `chapters`) — all Supabase calls live here, not in components
-- `src/components/` — UI; most are wired into a page. `OrbitMasteryMap.tsx`,
-  `WeakSpotsPanel.tsx`, and `TimelineView.tsx` are earlier-iteration pieces
-  that aren't currently imported anywhere — safe to delete or wire into a
-  page if you want them back.
+# Start development server
+npm run dev
 
-## What's deliberately not built yet
-- `study_session` has full API support (`startStudySession`,
-  `endStudySession`, `getAverageSessionLength`) but no UI timer calls it
-  yet — needed for the "loses focus after ~85 minutes" style insight
-  mentioned in the product doc, but that needs real usage data first
-  anyway.
-- Any predictive/AI logic. Deterministic rules only for now (never exceed
-  available hours, never silently drop revision, etc.) — the plan is to
-  run this for a few weeks per user before layering AI on top, per the
-  product philosophy: build the structured academic memory first, add the
-  mentor second.
+# Run production build validation
+npm run build
+```
+Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
-## Deploying so everyone can use it
-1. Push to a GitHub repo (`.gitignore` already excludes `node_modules`,
-   `.next`, and `.env*.local` — only source gets committed):
+---
+
+## 📱 Progressive Web App (PWA)
+
+Orbit is built as an installable PWA with offline caching:
+* **iOS (Safari):** Tap **Share** → **Add to Home Screen**.
+* **Android (Chrome):** Tap **Install Orbit** from the browser prompt.
+* **Desktop (Chrome/Edge):** Click the **Install** icon in the address bar.
+
+---
+
+## 🌐 Production Deployment (Vercel)
+
+1. Push your code to your GitHub repository:
    ```bash
-   git init
-   git add .
-   git commit -m "orbit v1"
-   git remote add origin <your-empty-github-repo-url>
-   git push -u origin main
+   git push origin main
    ```
-2. On vercel.com → **Add New Project** → import that repo
-3. Project settings → **Environment Variables** → add
-   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (same
-   values as `.env.local`)
-4. Deploy. Vercel gives you a URL like `orbit-yourname.vercel.app`.
-5. Everyone opens that link, signs up with their own email/password, and
-   can "Add to Home Screen" (Safari share menu on iPhone, install icon in
-   Chrome) for a real app-icon feel — no App Store involved.
+2. In [Vercel](https://vercel.com), import your repository.
+3. Add the following **Environment Variables** in Project Settings:
+   * `NEXT_PUBLIC_SUPABASE_URL`
+   * `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. Click **Deploy**. Vercel will output your production URL.
+
+---
+
+## 📁 Repository Structure
+
+```
+├── src/
+│   ├── api/               # Domain-specific Supabase & Dexie persistence drivers
+│   │   ├── chapters.ts
+│   │   ├── events.ts
+│   │   ├── exams.ts
+│   │   ├── gamification.ts
+│   │   ├── journey.ts
+│   │   ├── mistakes.ts    # Error logging + auto-spaced repetition trigger
+│   │   ├── profile.ts
+│   │   ├── revisions.ts   # Local-first Dexie spaced repetition queues
+│   │   ├── study_sessions.ts
+│   │   └── tasks.ts
+│   ├── app/               # Next.js App Router pages
+│   │   ├── journey/       # Interactive syllabus tree
+│   │   ├── login/         # Supabase Auth
+│   │   ├── mistakes/      # Mistake Book with error taxonomy
+│   │   ├── planner/       # Tactical cockpit & recall chamber
+│   │   ├── profile/       # Energy, sleep & account settings
+│   │   └── week/          # 7-day tactical load & exam radar
+│   ├── components/        # Reusable design system & desk widgets
+│   │   ├── AiMentorCard.tsx
+│   │   ├── CalibratePlanModal.tsx
+│   │   ├── RevisionSession.tsx
+│   │   └── ...
+│   ├── db/
+│   │   └── client.ts      # Dexie.js IndexedDB schema ('OrbitStudyOS')
+│   └── lib/               # Intelligence engines
+│       ├── academicState.ts   # Unified Academic Memory State
+│       ├── planningEngine.ts  # Capacity & Fatigue Shield
+│       ├── spacedRepetition.ts# FSRS / SM-2 algorithm
+│       └── supabase.ts    # Supabase Client singleton
+├── supabase/
+│   └── complete_orbit_database.sql # Consolidated 1-click master schema
+└── public/                # Static assets, icons, manifest.json
+```
+
+---
+
+## 📄 License
+MIT License. Built for dedicated STEM and Computer Science students.
