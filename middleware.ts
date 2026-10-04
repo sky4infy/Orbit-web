@@ -23,30 +23,25 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const isDemo = request.cookies.get('orbit_demo')?.value === 'true' || request.nextUrl.searchParams.get('demo') === 'true';
-
   let user = null;
-  if (!isDemo) {
-    try {
-      const { data } = await supabase.auth.getUser();
-      user = data.user;
-    } catch (err) {
-      console.warn('Middleware auth check skipped due to network/config:', err);
-    }
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    user = null;
   }
 
   const protectedPaths = ['/planner', '/journey', '/week', '/mistakes', '/profile'];
   const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));
 
-  if (!user && !isDemo && isProtected) {
+  // If visitor is not authenticated and attempts to access protected routes, redirect to /login
+  if (!user && isProtected) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
-  if ((user || isDemo) && request.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/planner', request.url));
-  }
 
-  if (isDemo && !request.cookies.get('orbit_demo')) {
-    response.cookies.set('orbit_demo', 'true', { path: '/', maxAge: 86400 * 30 });
+  // If visitor is already authenticated and visits /login, redirect to /planner
+  if (user && request.nextUrl.pathname === '/login') {
+    return NextResponse.redirect(new URL('/planner', request.url));
   }
 
   return response;

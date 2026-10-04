@@ -27,14 +27,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    const hasDemoCookie = typeof document !== 'undefined' && document.cookie.includes('orbit_demo=true');
-    const hasDemoLocal = typeof window !== 'undefined' && localStorage.getItem('orbit_demo') === 'true';
-    if (hasDemoCookie || hasDemoLocal) {
-      setUser({ id: 'demo-user-1', email: 'demo@orbit.app' } as unknown as User);
-      setAuthLoading(false);
-      return;
-    }
-
     const timer = setTimeout(() => {
       setAuthLoading(false);
     }, 400);
