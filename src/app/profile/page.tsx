@@ -10,23 +10,6 @@ import type { TrackType } from '@/types/database.types';
 import { Sparkles, Code2, Check, User, Users, Flame, Trophy, Shield, LogOut, Database, Download, Upload } from 'lucide-react';
 import { getOrbitStats, exportOrbitBackupJSON, importOrbitBackupJSON } from '@/lib/db';
 
-const TRACKS: { id: TrackType; title: string; badge: string; desc: string; icon: typeof Sparkles }[] = [
-  {
-    id: 'jee_nsep',
-    title: 'STEM & Olympiad',
-    badge: 'JEE Main • Adv • NSEP',
-    desc: 'Deep multi-concept mechanics, Section B analytical problem sets, chemistry, and advanced calculus.',
-    icon: Sparkles,
-  },
-  {
-    id: 'college_cs_aiml',
-    title: 'Computer Science & AI',
-    badge: 'DSA • AI/ML • Systems',
-    desc: 'Algorithm patterns (Blind 75), PyTorch workflows, neural architectures, distributed systems, and DB design.',
-    icon: Code2,
-  },
-];
-
 function withTimeout<T>(promise: Promise<T>, ms = 800): Promise<T> {
   return Promise.race([
     promise,
@@ -42,7 +25,6 @@ export default function ProfilePage() {
   const [activeTrack, setActiveTrack] = useState<TrackType>('jee_nsep');
   const [partnerName, setPartnerName] = useState('Study Partner');
   const [loading, setLoading] = useState(false);
-  const [trackSaved, setTrackSaved] = useState(false);
   const [dbStats, setDbStats] = useState({ tasks: 0, mistakes: 0, exams: 0 });
   const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
 
@@ -121,18 +103,6 @@ export default function ProfilePage() {
     };
   }, [userId]);
 
-  async function handleTrackSelect(trackId: TrackType) {
-    setActiveTrack(trackId);
-    localStorage.setItem('orbit_active_track', trackId);
-    setTrackSaved(true);
-    try {
-      await supabase.auth.updateUser({ data: { track: trackId } });
-    } catch {
-      // Local-first fallback
-    }
-    setTimeout(() => setTrackSaved(false), 2000);
-  }
-
   function handlePartnerNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setPartnerName(val);
@@ -188,51 +158,61 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Primary Focus & Curriculum Selection */}
+      {/* Primary Academic Focus Track (Configured at Signup) */}
       <section className="mb-6 rounded-3xl border border-white/10 bg-ink-50 p-5">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-start justify-between">
           <div>
             <h2 className="text-sm font-semibold text-paper flex items-center gap-1.5">
-              <Shield size={16} className="text-amber" /> Academic Focus Track
+              <Shield size={16} className="text-amber" /> Primary Academic Focus
             </h2>
-            <p className="text-xs text-paper/50">Your syllabus, AI mentor, and exams orient to this path</p>
+            <p className="text-xs text-paper/50 mt-0.5">
+              Configured during signup. Your syllabus, planner, and AI mentor are calibrated to this path.
+            </p>
           </div>
-          {trackSaved && (
-            <span className="flex items-center gap-1 rounded-full bg-sage/20 px-2 py-0.5 text-[10px] font-medium text-sage">
-              <Check size={12} /> Saved
-            </span>
-          )}
+          <span className="rounded-full border border-amber/30 bg-amber/10 px-2.5 py-1 font-mono text-[10px] font-medium text-amber">
+            {activeTrack === 'jee_nsep' ? 'STEM • JEE' : 'CS & AI'}
+          </span>
         </div>
 
-        <div className="flex flex-col gap-2.5">
-          {TRACKS.map((t) => {
-            const active = activeTrack === t.id;
-            const Icon = t.icon;
-            return (
+        <div className="mt-4 rounded-2xl border border-white/5 bg-ink/40 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-amber">
+                {activeTrack === 'jee_nsep' ? <Sparkles size={18} /> : <Code2 size={18} />}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-paper">
+                  {activeTrack === 'jee_nsep'
+                    ? 'STEM & Olympiad (JEE Main • Advanced • NSEP)'
+                    : 'Computer Science & AI / ML Track'}
+                </p>
+                <p className="text-[11px] text-paper/40 mt-0.5">
+                  {activeTrack === 'jee_nsep'
+                    ? 'Physics • Chemistry • Mathematics'
+                    : 'Data Structures • Algorithms • Machine Learning • Web Systems'}
+                </p>
+              </div>
+            </div>
+
+            {/* In case user accidentally switched to JEE and wants their CS & AI track back */}
+            {activeTrack === 'jee_nsep' && (
               <button
-                key={t.id}
-                onClick={() => handleTrackSelect(t.id)}
-                className={`flex flex-col items-start rounded-2xl border p-4 text-left transition ${
-                  active
-                    ? 'border-amber bg-amber/10 shadow-md shadow-amber/10'
-                    : 'border-white/5 bg-ink/40 hover:border-white/20'
-                }`}
+                type="button"
+                onClick={async () => {
+                  setActiveTrack('college_cs_aiml');
+                  localStorage.setItem('orbit_active_track', 'college_cs_aiml');
+                  try {
+                    await supabase.auth.updateUser({ data: { track: 'college_cs_aiml' } });
+                  } catch {}
+                  window.location.href = '/journey';
+                }}
+                className="rounded-xl border border-amber/30 bg-amber/15 px-3 py-1.5 text-xs font-semibold text-amber transition hover:bg-amber/25 active:scale-95 shrink-0 ml-3"
+                title="Restore your Computer Science & AI track"
               >
-                <div className="flex w-full items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Icon size={16} className={active ? 'text-amber' : 'text-paper/40'} />
-                    <span className="text-sm font-semibold text-paper">{t.title}</span>
-                  </div>
-                  <span className={`rounded-md px-2 py-0.5 font-mono text-[10px] font-medium ${
-                    active ? 'bg-amber text-ink' : 'bg-white/5 text-paper/40'
-                  }`}>
-                    {t.badge}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-xs text-paper/60 leading-relaxed">{t.desc}</p>
+                Revert to CS & AI
               </button>
-            );
-          })}
+            )}
+          </div>
         </div>
       </section>
 
