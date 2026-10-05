@@ -13,6 +13,7 @@ import { EditExamModal } from '@/components/EditExamModal';
 import { useRequireAuth } from '@/lib/useRequireAuth';
 import { getCurriculumChapters } from '@/lib/curriculumData';
 import { syncAllUserData } from '@/lib/syncService';
+import { subscribeDataChanged } from '@/lib/syncEvents';
 
 function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
   return Promise.race([
@@ -176,6 +177,44 @@ export default function WeekPage() {
 
     load(userId, track);
   }, [userId, authLoading, load, track]);
+
+  // Real-time reactive updates: Re-sync when switching back to tab or on cross-tab update
+  useEffect(() => {
+    if (!userId) return;
+
+    let isMounted = true;
+    let lastSyncTime = 0;
+
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastSyncTime > 8000) {
+          lastSyncTime = now;
+          syncAllUserData(userId).then(() => {
+            if (isMounted) load(userId, track);
+          });
+        } else {
+          if (isMounted) load(userId, track);
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
+
+    const unsubscribe = subscribeDataChanged((source) => {
+      if (source !== 'local-optimistic' && isMounted) {
+        load(userId, track);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+      unsubscribe();
+    };
+  }, [userId, load, track]);
 
   const refresh = useCallback(() => {
     if (userId) load(userId, track);

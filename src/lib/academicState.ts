@@ -55,6 +55,7 @@ export interface TargetExamContext {
   daysRemaining: number;
   isTargetingTrack: boolean;
   targetedChapterCount: number;
+  targetSubjectName?: string | null;
 }
 
 export interface CognitiveCapacityProfile {
@@ -258,27 +259,58 @@ export async function getUnifiedAcademicState(
     const nextExam = upcomingExams[0];
     const examDateObj = parseISO(nextExam.exam_date);
     const daysRemaining = Math.max(0, differenceInCalendarDays(examDateObj, today));
+    let inferredSubjectName: string | null = null;
 
     if (nextExam.chapter_ids && nextExam.chapter_ids.length > 0) {
       nextExam.chapter_ids.forEach((id) => targetedChapterSet.add(id));
+      const firstTargeted = baseChapters.find((c) => nextExam.chapter_ids?.includes(c.id));
+      if (firstTargeted) inferredSubjectName = firstTargeted.subjectName;
     } else {
       // Intelligently infer targeted chapters from exam title keywords (e.g. "COA midsem" -> "COA college subject")
-      const stopWords = new Set(['exam', 'midsem', 'endsem', 'test', 'quiz', 'target', 'unit', 'final', 'mid', 'assessment', 'theory', 'lab']);
+      const stopWords = new Set(['exam', 'midsem', 'endsem', 'test', 'quiz', 'target', 'unit', 'final', 'mid', 'assessment', 'theory', 'lab', 'practical', 'sprint', 'session', 'mock', 'paper']);
       const examWords = nextExam.name
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)
         .filter((w) => w.length >= 2 && !stopWords.has(w));
 
-      if (examWords.length > 0) {
-        baseChapters.forEach((ch) => {
-          const subLower = ch.subjectName.toLowerCase();
-          const chapLower = ch.name.toLowerCase();
-          const matches = examWords.some((w) => subLower.includes(w) || chapLower.includes(w));
-          if (matches) {
-            targetedChapterSet.add(ch.id);
-          }
-        });
+      const ACRONYMS: Record<string, string[]> = {
+        coa: ['computer organization', 'architecture', 'coa', 'microprocessor', 'assembly', 'instruction set', 'cache', 'pipelining'],
+        os: ['operating systems', 'operating system', 'os', 'concurrency', 'semaphores', 'memory management', 'scheduling', 'processes'],
+        dbms: ['database', 'dbms', 'sql', 'b-trees', 'wal', 'postgres', 'relational'],
+        cn: ['computer networks', 'networking', 'networks', 'tcp', 'dns', 'http', 'cn'],
+        cd: ['compiler', 'compiler design', 'parsing', 'syntax', 'lexical', 'cd'],
+        dsa: ['data structures', 'algorithms', 'dsa'],
+        aiml: ['ai', 'machine learning', 'artificial intelligence', 'ml', 'neural networks'],
+        ml: ['machine learning', 'ml', 'neural networks', 'linear algebra', 'pytorch'],
+        ai: ['artificial intelligence', 'ai'],
+        toc: ['theory of computation', 'automata', 'turing', 'computation'],
+        se: ['software engineering'],
+        oop: ['object oriented', 'oops', 'java', 'c++'],
+      };
+
+      const searchTerms = new Set<string>(examWords);
+      examWords.forEach((w) => {
+        if (ACRONYMS[w]) {
+          ACRONYMS[w].forEach((syn) => searchTerms.add(syn));
+        }
+      });
+
+      const termsList = Array.from(searchTerms);
+
+      baseChapters.forEach((ch) => {
+        const subLower = ch.subjectName.toLowerCase();
+        const chapLower = ch.name.toLowerCase();
+        const matches = termsList.some((w) => subLower.includes(w) || chapLower.includes(w));
+        if (matches) {
+          targetedChapterSet.add(ch.id);
+          if (!inferredSubjectName) inferredSubjectName = ch.subjectName;
+        }
+      });
+
+      if (!inferredSubjectName && examWords.length > 0) {
+        const primary = examWords[0];
+        inferredSubjectName = primary.length <= 4 ? primary.toUpperCase() : primary.charAt(0).toUpperCase() + primary.slice(1);
       }
     }
 
@@ -290,6 +322,7 @@ export async function getUnifiedAcademicState(
       daysRemaining,
       isTargetingTrack: true,
       targetedChapterCount: targetedChapterSet.size,
+      targetSubjectName: inferredSubjectName,
     };
   } else {
     // Sensible Olympiad / CS default countdown if no exam logged yet
@@ -302,6 +335,7 @@ export async function getUnifiedAcademicState(
       daysRemaining: fallbackDays,
       isTargetingTrack: true,
       targetedChapterCount: 0,
+      targetSubjectName: track === 'jee_nsep' ? 'Physics' : 'Data Structures & Algorithms',
     };
   }
 

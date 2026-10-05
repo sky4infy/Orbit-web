@@ -10,6 +10,7 @@ import { LogMistakeModal } from '@/components/LogMistakeModal';
 import { RevisionSession } from '@/components/RevisionSession';
 import { useRequireAuth } from '@/lib/useRequireAuth';
 import { getCurriculumChapters } from '@/lib/curriculumData';
+import { subscribeDataChanged } from '@/lib/syncEvents';
 import type { TrackType } from '@/types/database.types';
 
 function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
@@ -217,6 +218,35 @@ export default function MistakesPage() {
       load('', track);
     }
   }, [userId, authLoading, load, track]);
+
+  // Real-time reactive updates: Re-sync when switching back to tab or on cross-tab update
+  useEffect(() => {
+    if (!userId) return;
+
+    let isMounted = true;
+
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        load(userId, track);
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
+
+    const unsubscribe = subscribeDataChanged((source) => {
+      if (source !== 'local-optimistic' && isMounted) {
+        load(userId, track);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+      unsubscribe();
+    };
+  }, [userId, load, track]);
 
   const refresh = useCallback(() => {
     if (userId) load(userId, track);

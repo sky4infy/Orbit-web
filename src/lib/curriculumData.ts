@@ -1,6 +1,8 @@
 import type { TrackType, ChapterStatus, ChapterStatusRow, SubjectProgressRow } from '@/types/database.types';
 import type { TaskWithChapter } from '@/api/tasks';
 import { generateUuid, isUuid } from '@/lib/uuid';
+import { supabase } from '@/lib/supabase/client';
+import { notifyDataChanged } from '@/lib/syncEvents';
 
 export interface CurriculumChapter {
   id: string;
@@ -284,6 +286,11 @@ export function deleteChapter(chapterId: string) {
   delete overrides[chapterId];
   delete overrides[resolvedId];
   localStorage.setItem(CHAPTER_OVERRIDES_KEY, JSON.stringify(overrides));
+
+  if (isUuid(resolvedId)) {
+    Promise.resolve(supabase.from('chapter').delete().eq('id', resolvedId)).catch(() => {});
+  }
+  notifyDataChanged('chapter-deleted');
 }
 
 export function deleteSubject(subjectId: string) {
@@ -307,6 +314,11 @@ export function deleteSubject(subjectId: string) {
 
   const allChaps = [...JEE_CHAPTERS, ...CS_CHAPTERS, ...getCustomChapters()];
   allChaps.filter((c) => c.subjectId === subjectId || c.subjectId === resolvedId).forEach((c) => deleteChapter(c.id));
+
+  if (isUuid(resolvedId)) {
+    Promise.resolve(supabase.from('subject').delete().eq('id', resolvedId)).catch(() => {});
+  }
+  notifyDataChanged('subject-deleted');
 }
 
 export function getCustomSubjects(): { id: string; name: string; track: TrackType }[] {
@@ -332,6 +344,7 @@ export function addCustomSubject(name: string, track: TrackType, customId?: stri
       }
       updateCustomSubjectId(oldId, id);
     }
+    notifyDataChanged('subject-added');
     return existing;
   }
   const newSub = { id, name: name.trim(), track };
@@ -339,6 +352,7 @@ export function addCustomSubject(name: string, track: TrackType, customId?: stri
   if (typeof window !== 'undefined') {
     localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(list));
   }
+  notifyDataChanged('subject-added');
   return newSub;
 }
 
@@ -481,6 +495,7 @@ export function addCustomChapter(data: {
   if (typeof window !== 'undefined') {
     localStorage.setItem(CUSTOM_CHAPTERS_KEY, JSON.stringify(list));
   }
+  notifyDataChanged('chapter-added');
   return chapEntry;
 }
 
@@ -509,6 +524,7 @@ export function saveChapterOverride(chapterId: string, updates: { status?: Chapt
   if (typeof window !== 'undefined') {
     localStorage.setItem(CHAPTER_OVERRIDES_KEY, JSON.stringify(overrides));
   }
+  notifyDataChanged('override-saved');
 }
 
 export function getCurriculumChapters(track: TrackType): CurriculumChapter[] {
@@ -517,7 +533,10 @@ export function getCurriculumChapters(track: TrackType): CurriculumChapter[] {
   const hiddenSubNames = new Set(hiddenSubjects.map((h) => h.toLowerCase()));
 
   const base = track === 'all' ? [...JEE_CHAPTERS, ...CS_CHAPTERS] : track === 'jee_nsep' ? JEE_CHAPTERS : CS_CHAPTERS;
-  const custom = getCustomChapters().filter((c) => track === 'all' || c.track === track || c.track === 'all');
+  const custom = getCustomChapters().filter(
+    (c) =>
+      track === 'all' || !c.track || c.track === track || c.track === 'all'
+  );
   const all = [...base, ...custom];
   const overrides = getChapterOverrides();
 
@@ -544,7 +563,9 @@ export function getCurriculumSubjects(track: TrackType) {
   const hiddenSubjects = getHiddenSubjects();
   const hiddenSubNames = new Set(hiddenSubjects.map((h) => h.toLowerCase()));
   const base = track === 'all' ? [...JEE_SUBJECTS, ...CS_SUBJECTS] : track === 'jee_nsep' ? JEE_SUBJECTS : CS_SUBJECTS;
-  const custom = getCustomSubjects().filter((s) => track === 'all' || s.track === track || s.track === 'all');
+  const custom = getCustomSubjects().filter(
+    (s) => track === 'all' || !s.track || s.track === track || s.track === 'all'
+  );
   return [...base, ...custom].filter(
     (s) => !hiddenSubjects.includes(s.id) && !hiddenSubNames.has(s.name.toLowerCase())
   );

@@ -3,6 +3,7 @@ import type { ExamReadinessRow, ExamType } from '@/types/database.types';
 import { getLocalExams, saveLocalExam, deleteLocalExam, getLocalExam, type LocalExam } from '@/lib/db';
 import { getCurriculumChapters, resolveChapterId } from '@/lib/curriculumData';
 import { generateUuid, isUuid } from '@/lib/uuid';
+import { notifyDataChanged } from '@/lib/syncEvents';
 
 const HIDDEN_SAMPLE_EXAMS_KEY = 'orbit_hidden_sample_exams';
 
@@ -147,6 +148,7 @@ export async function createExam(
     })();
   }
 
+  notifyDataChanged('exam-created');
   return { id: newId };
 }
 
@@ -206,6 +208,7 @@ export async function updateExam(
       }
     })();
   }
+  notifyDataChanged('exam-updated');
 }
 
 export async function deleteExam(examId: string) {
@@ -218,4 +221,5 @@ export async function deleteExam(examId: string) {
       supabase.from('exam').delete().eq('id', examId),
     ]).catch(() => {});
   }
+  notifyDataChanged('exam-deleted');
 }

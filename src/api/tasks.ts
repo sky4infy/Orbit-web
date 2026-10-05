@@ -15,6 +15,7 @@ import {
   deleteLocalTask,
   type LocalTask,
 } from '@/lib/db';
+import { notifyDataChanged } from '@/lib/syncEvents';
 
 export interface TaskWithChapter {
   id: string;
@@ -216,6 +217,7 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'complet
     logEvent(task.user_id, 'task_created', { task_id: newId, chapter_id: validChapterId }).catch(() => {});
   }
 
+  notifyDataChanged('task-created');
   return localTask as unknown as Task;
 }
 
@@ -235,6 +237,7 @@ export async function updateTask(
       console.error('Cloud task update exception:', err);
     }
   })();
+  notifyDataChanged('task-updated');
 }
 
 export async function closeTask(
@@ -279,6 +282,7 @@ export async function closeTask(
     }
   }
 
+  notifyDataChanged('task-closed');
   return { id: taskId, status } as unknown as Task;
 }
 
@@ -314,6 +318,7 @@ export async function rescheduleTask(
         .eq('id', taskId)
     ).catch(() => {});
   }
+  notifyDataChanged('task-rescheduled');
 }
 
 export async function getMissedTasks(userId: string, beforeDate: string): Promise<TaskWithChapter[]> {
@@ -397,6 +402,7 @@ export async function revertTaskToPending(taskId: string, originalDate: string) 
       } as never)
       .eq('id', taskId)
   ).catch(() => {});
+  notifyDataChanged('task-reverted');
 }
 
 export async function deleteTask(taskId: string) {
@@ -404,6 +410,7 @@ export async function deleteTask(taskId: string) {
   Promise.resolve(
     supabase.from('task').delete().eq('id', taskId)
   ).catch(() => {});
+  notifyDataChanged('task-deleted');
 }
 
 export async function reorderTasks(tasks: { id: string; time_slot: TimeSlot; position: number }[]) {
@@ -426,6 +433,7 @@ export async function reorderTasks(tasks: { id: string; time_slot: TimeSlot; pos
       )
     )
   ).catch(() => {});
+  notifyDataChanged('task-reordered');
 }
 
 export async function getWeekOverview(

@@ -8,6 +8,8 @@ import type { TaskWithChapter } from '@/api/tasks';
 import { generateOptimalDayPlan, type PlanningEngineOutput, type SuggestedTask } from '@/lib/planningEngine';
 import { getUnifiedAcademicState, type UnifiedStudentState } from '@/lib/academicState';
 
+import { subscribeDataChanged } from '@/lib/syncEvents';
+
 interface Props {
   userId?: string;
   track: TrackType;
@@ -28,9 +30,25 @@ export function AiMentorCard({ userId = '', track, date, tasks, chapters, onAppl
   const isOlympiadTrack = track === 'jee_nsep';
 
   useEffect(() => {
-    getUnifiedAcademicState(userId, track)
-      .then((st) => setAcademicState(st))
-      .catch((err) => console.warn('Failed to fetch academic state for mentor card:', err));
+    let isMounted = true;
+    function fetchState() {
+      getUnifiedAcademicState(userId, track)
+        .then((st) => {
+          if (isMounted) setAcademicState(st);
+        })
+        .catch((err) => console.warn('Failed to fetch academic state for mentor card:', err));
+    }
+
+    fetchState();
+
+    const unsubscribe = subscribeDataChanged(() => {
+      fetchState();
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [userId, track, tasks]);
 
   const targetExam = academicState?.targetExam;
@@ -45,9 +63,16 @@ export function AiMentorCard({ userId = '', track, date, tasks, chapters, onAppl
     ? academicState?.chapters.filter((c) => c.isExamTargeted)
     : [];
 
+  const examCleanName =
+    targetExam?.targetSubjectName ||
+    targetExam?.name.replace(/\b(exam|midsem|endsem|test|quiz|final|assessment|mock|paper)\b/gi, '').trim() ||
+    targetExam?.name;
+
   const topWeakChapter =
     examTargetedChapters?.[0]?.name ??
-    academicState?.chapters[0]?.name ??
+    (targetExam && targetExam.daysRemaining <= 30
+      ? `${examCleanName} Core Topics`
+      : academicState?.chapters[0]?.name) ??
     chapters.find((c) => c.unresolvedMistakes > 0 || c.confidence < 60)?.name ??
     (isOlympiadTrack ? 'Rotational Dynamics' : 'Dynamic Programming');
 
@@ -64,7 +89,10 @@ export function AiMentorCard({ userId = '', track, date, tasks, chapters, onAppl
   if (cognitive?.fatigueRisk) {
     primaryRecommendation = `🛡️ Fatigue Shield Active: ${cognitive.reportedSleep}h sleep recorded (7-day avg: ${cognitive.sevenDayAvgSleep}h). Orbit has scaled recommended study to ${cognitive.recommendedStudyHours}h to protect cognitive recovery. Priority #1 is clearing ${topWeakChapter} without overworking.`;
   } else if (targetExam && targetExam.daysRemaining <= 30) {
-    primaryRecommendation = `Target Milestone: ${targetExam.name} is in ${targetExam.daysRemaining} days. Priority #1 is ${topWeakChapter} (${totalUnresolvedMistakes} active errors to clear). Keep evening work focused on timed drills.`;
+    const errorNotice = totalUnresolvedMistakes > 0
+      ? `${totalUnresolvedMistakes} active error points to clear`
+      : 'core syllabus drills & practice';
+    primaryRecommendation = `Target Milestone: ${targetExam.name} is in ${targetExam.daysRemaining} days. Priority #1 is ${topWeakChapter} (${errorNotice}). Keep evening work focused on timed drills.`;
   } else if (isOlympiadTrack) {
     primaryRecommendation = `You have ${totalUnresolvedMistakes} active error points logged (${conceptualCount} conceptual). Priority #1 is ${topWeakChapter} (focus on multi-concept analytical derivations). Keep evening self-study to 3.5 hrs max so you get 7.5 hrs of sleep.`;
   } else {

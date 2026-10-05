@@ -32,6 +32,7 @@ import { AiMentorCard } from '@/components/AiMentorCard';
 import { getDueRevisions, type DueRevisionRow } from '@/api/revisions';
 import { RevisionSession } from '@/components/RevisionSession';
 import { syncAllUserData } from '@/lib/syncService';
+import { notifyDataChanged, subscribeDataChanged } from '@/lib/syncEvents';
 import { getCurriculumChapters, getStarterTasks, resolveChapterId } from '@/lib/curriculumData';
 import { generateUuid } from '@/lib/uuid';
 import { supabase } from '@/lib/supabase/client';
@@ -198,6 +199,45 @@ export default function PlannerPage() {
     }
   }, [userId, authLoading, load, track, date]);
 
+  // Real-time reactive updates: Re-sync whenever the user switches back to this tab
+  // or whenever another device/tab pushes changes
+  useEffect(() => {
+    if (!userId) return;
+
+    let isMounted = true;
+    let lastSyncTime = 0;
+
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastSyncTime > 8000) {
+          lastSyncTime = now;
+          syncAllUserData(userId).then(() => {
+            if (isMounted) load(userId, track, false);
+          });
+        } else {
+          if (isMounted) load(userId, track, false);
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
+
+    const unsubscribe = subscribeDataChanged((source) => {
+      if (source !== 'local-optimistic' && isMounted) {
+        load(userId, track, false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+      unsubscribe();
+    };
+  }, [userId, track, load]);
+
   const refresh = useCallback(() => {
     if (userId) load(userId, track);
   }, [userId, load, track]);
@@ -228,6 +268,7 @@ export default function PlannerPage() {
 
   async function markDone(task: TaskWithChapter) {
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'completed' } : t)));
+    notifyDataChanged('task-completed');
     if (!userId) return;
     try {
       await closeTask(userId, task.id, 'completed');
@@ -244,6 +285,7 @@ export default function PlannerPage() {
 
   async function handleUndoDone(task: TaskWithChapter) {
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'pending' } : t)));
+    notifyDataChanged('task-undone');
     try {
       await revertTaskToPending(task.id, date);
       await refreshGamification();

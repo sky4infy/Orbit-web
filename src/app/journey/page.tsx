@@ -12,6 +12,7 @@ import {
 } from '@/api/journey';
 import { getChaptersOverview } from '@/api/chapters';
 import { syncAllUserData } from '@/lib/syncService';
+import { subscribeDataChanged, notifyDataChanged } from '@/lib/syncEvents';
 import type { SubjectProgressRow, ChapterStatusRow, ChapterStatus, TrackType } from '@/types/database.types';
 import { useRequireAuth } from '@/lib/useRequireAuth';
 import { OrbitMasteryMap } from '@/components/OrbitMasteryMap';
@@ -268,6 +269,44 @@ export default function JourneyPage() {
       });
     }
   }, [userId, reloadCurriculum, initialTrack]);
+
+  // Real-time reactive updates: Re-sync when switching back to tab or on cross-tab update
+  useEffect(() => {
+    if (!userId) return;
+
+    let isMounted = true;
+    let lastSyncTime = 0;
+
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastSyncTime > 8000) {
+          lastSyncTime = now;
+          syncAllUserData(userId).then(() => {
+            if (isMounted) reloadCurriculum();
+          });
+        } else {
+          if (isMounted) reloadCurriculum();
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
+
+    const unsubscribe = subscribeDataChanged((source) => {
+      if (source !== 'local-optimistic' && isMounted) {
+        reloadCurriculum();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+      unsubscribe();
+    };
+  }, [userId, reloadCurriculum]);
 
   const handleManualSync = async () => {
     if (!userId || isSyncing) return;
