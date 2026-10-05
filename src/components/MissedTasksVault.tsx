@@ -80,37 +80,37 @@ export function MissedTasksVault({
       {/* Folder Header */}
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between p-4 text-left transition hover:bg-white/[0.02]"
+        className="flex w-full items-center justify-between p-3.5 sm:p-4 text-left transition hover:bg-white/[0.02] group"
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber/15 text-amber ring-1 ring-amber/30">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber/15 text-amber ring-1 ring-amber/30 group-hover:scale-105 transition-transform">
             <FolderArchive size={17} />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-display text-sm font-semibold text-paper">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-display text-sm font-semibold text-paper whitespace-nowrap">
                 Missed Missions Vault
               </h3>
-              <span className="rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-amber">
+              <span className="shrink-0 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-amber">
                 {missedTasks.length} left behind
               </span>
             </div>
-            <p className="text-[11px] text-paper/40 mt-0.5">
+            <p className="text-[11px] text-paper/40 mt-0.5 truncate">
               Unfinished missions from previous days · Zero academic debt
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="hidden sm:inline font-mono text-xs text-amber hover:underline">
-            {isOpen ? 'Collapse' : 'Review & Reschedule'}
+        <div className="flex items-center gap-2 shrink-0 ml-3">
+          <span className="hidden sm:inline-flex items-center rounded-lg border border-amber/25 bg-amber/10 px-2.5 py-1 text-xs font-semibold text-amber whitespace-nowrap group-hover:bg-amber/20 transition">
+            {isOpen ? 'Collapse' : 'Review'}
           </span>
           <div
-            className={`flex h-7 w-7 items-center justify-center rounded-lg text-paper/40 transition-transform ${
-              isOpen ? 'rotate-180 text-paper/80' : ''
+            className={`flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 text-paper/40 transition-transform ${
+              isOpen ? 'rotate-180 text-amber' : 'group-hover:text-paper/80'
             }`}
           >
-            <ChevronDown size={16} />
+            <ChevronDown size={15} />
           </div>
         </div>
       </button>
@@ -123,19 +123,19 @@ export function MissedTasksVault({
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="border-t border-white/5 px-4 pb-4 pt-3"
+            className="border-t border-white/5 px-3.5 pb-4 pt-3 sm:px-4"
           >
             {/* Batch Action Bar */}
-            <div className="mb-3.5 flex items-center justify-between rounded-xl border border-white/5 bg-ink/60 px-3.5 py-2.5">
+            <div className="mb-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-xl border border-white/5 bg-ink/60 p-3">
               <div className="flex items-center gap-2 text-xs text-paper/60">
-                <Layers size={14} className="text-amber" />
-                <span>
+                <Layers size={14} className="text-amber shrink-0" />
+                <span className="text-[11px] sm:text-xs">
                   Reschedule all {missedTasks.length} missions into today's plan
                 </span>
               </div>
               <button
                 onClick={onRescheduleAllToToday}
-                className="flex items-center gap-1.5 rounded-lg bg-amber px-2.5 py-1 text-xs font-semibold text-ink shadow-sm transition hover:brightness-105 active:scale-95"
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-amber px-3 py-1.5 text-xs font-semibold text-ink shadow-sm transition hover:brightness-105 active:scale-95 shrink-0"
               >
                 <CalendarCheck2 size={13} />
                 <span>Move All to Today</span>
@@ -149,36 +149,39 @@ export function MissedTasksVault({
                 return (
                   <div
                     key={t.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-white/5 bg-ink/40 p-3 transition hover:border-white/10"
+                    className="flex flex-col gap-2.5 rounded-xl border border-white/5 bg-ink/40 p-3 sm:p-3.5 transition hover:border-white/10"
                   >
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono">
-                        <span className="rounded-md border border-amber/30 bg-amber/10 px-1.5 py-0.5 text-amber">
+                        <span className="shrink-0 rounded-md border border-amber/30 bg-amber/10 px-1.5 py-0.5 text-amber whitespace-nowrap">
                           Missed {missedLabel} · {SLOT_LABELS[t.time_slot]}
                         </span>
-                        <span className="text-paper/40 truncate max-w-[200px]">
-                          {t.chapter?.subject?.name} · {t.chapter?.name}
-                        </span>
+                        {(t.chapter?.subject?.name || t.chapter?.name) && (
+                          <span className="text-paper/40 truncate max-w-[200px]">
+                            {t.chapter?.subject?.name ? `${t.chapter.subject.name} · ` : ''}
+                            {t.chapter?.name}
+                          </span>
+                        )}
                       </div>
-                      <p className="mt-1 text-sm font-medium text-paper leading-snug break-words line-clamp-2">
+                      <p className="mt-1.5 text-sm font-medium text-paper leading-snug break-words">
                         {t.title}
                       </p>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/5 flex-wrap sm:flex-nowrap">
                       <button
                         onClick={() => onRescheduleToToday(t)}
-                        className="flex items-center gap-1 rounded-lg bg-amber/15 px-2.5 py-1.5 text-xs font-semibold text-amber ring-1 ring-amber/30 transition hover:bg-amber/25"
+                        className="flex items-center gap-1 rounded-lg bg-amber/15 border border-amber/30 px-2.5 py-1.5 text-xs font-semibold text-amber transition hover:bg-amber/25 active:scale-95"
                         title="Reschedule to Today"
                       >
                         <Calendar size={13} />
-                        <span>Today</span>
+                        <span>Move to Today</span>
                       </button>
 
                       <button
                         onClick={() => handleOpenCustom(t)}
-                        className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-paper/70 hover:bg-white/10 hover:text-paper transition"
+                        className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-paper/70 hover:bg-white/10 hover:text-paper transition active:scale-95"
                         title="Pick custom date and slot"
                       >
                         <span>Reschedule...</span>
@@ -186,7 +189,7 @@ export function MissedTasksVault({
 
                       <button
                         onClick={() => onRequestSkip(t)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/5 bg-white/5 text-paper/40 transition hover:border-rust/30 hover:bg-rust/10 hover:text-rust"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/5 bg-white/5 text-paper/40 transition hover:border-rust/30 hover:bg-rust/10 hover:text-rust active:scale-95"
                         title="Archive / Log as Skipped (Zero debt)"
                       >
                         <FastForward size={13} />
