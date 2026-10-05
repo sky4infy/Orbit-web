@@ -189,59 +189,61 @@ export function OrbitMasteryMap({ chapters }: Props) {
       {/* Floating Interactive Chapter Inspection Card */}
       <AnimatePresence>
         {activeChapter && (
-          <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.96 }}
-            transition={{ duration: 0.15 }}
-            onClick={(e) => e.stopPropagation()}
-            className="absolute left-1/2 top-2 z-20 w-[92%] max-w-[280px] -translate-x-1/2 rounded-2xl border border-white/15 bg-ink-100/95 p-3.5 shadow-2xl backdrop-blur-md"
-          >
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span
-                  className="h-2 w-2 rounded-full shrink-0"
-                  style={{ background: colorForSubject(activeChapter.subjectName) }}
-                />
-                <span className="font-mono text-[10px] text-paper/60 uppercase tracking-wider truncate">
-                  {activeChapter.subjectName}
-                </span>
-              </div>
-              <button
-                onClick={() => setSelectedId(null)}
-                className="text-paper/40 hover:text-paper rounded-md p-0.5 transition"
-                aria-label="Close details"
-              >
-                <X size={13} />
-              </button>
-            </div>
-
-            <p className="font-display text-sm font-semibold text-paper leading-snug line-clamp-2">
-              {activeChapter.name}
-            </p>
-
-            <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2 text-[11px]">
-              <div className="flex items-center gap-2">
-                <span className="font-mono font-medium text-amber">
-                  {activeChapter.confidence}% confidence
-                </span>
-                <span className="text-white/20">•</span>
-                <span className={activeChapter.unresolvedMistakes > 0 ? 'text-rust font-medium' : 'text-emerald-400'}>
-                  {activeChapter.unresolvedMistakes > 0
-                    ? `${activeChapter.unresolvedMistakes} mistake${activeChapter.unresolvedMistakes > 1 ? 's' : ''}`
-                    : 'Clean'}
-                </span>
+          <div className="absolute inset-x-0 top-3 z-20 flex justify-center px-3 pointer-events-none">
+            <motion.div
+              initial={{ opacity: 0, y: -8, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="pointer-events-auto w-full max-w-[320px] rounded-2xl border border-white/15 bg-ink-100/95 p-3.5 shadow-2xl backdrop-blur-md"
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0 shadow-sm"
+                    style={{ background: colorForSubject(activeChapter.subjectName) }}
+                  />
+                  <span className="font-mono text-[10px] text-paper/60 uppercase tracking-wider truncate">
+                    {activeChapter.subjectName}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedId(null)}
+                  className="text-paper/40 hover:text-paper rounded-md p-1 transition"
+                  aria-label="Close details"
+                >
+                  <X size={14} />
+                </button>
               </div>
 
-              <Link
-                href={`/journey/${activeChapter.id}`}
-                className="flex items-center gap-1 rounded-lg bg-amber/15 px-2 py-0.5 font-medium text-amber hover:bg-amber/25 transition text-[11px]"
-              >
-                <span>Open</span>
-                <ArrowRight size={11} />
-              </Link>
-            </div>
-          </motion.div>
+              <p className="font-display text-sm font-semibold text-paper leading-snug line-clamp-2">
+                {activeChapter.name}
+              </p>
+
+              <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-medium text-amber">
+                    {activeChapter.confidence}% confidence
+                  </span>
+                  <span className="text-white/20">•</span>
+                  <span className={activeChapter.unresolvedMistakes > 0 ? 'text-rust font-medium' : 'text-emerald-400'}>
+                    {activeChapter.unresolvedMistakes > 0
+                      ? `${activeChapter.unresolvedMistakes} mistake${activeChapter.unresolvedMistakes > 1 ? 's' : ''}`
+                      : 'Clean'}
+                  </span>
+                </div>
+
+                <Link
+                  href={`/journey/${activeChapter.id}`}
+                  className="flex items-center gap-1 rounded-lg bg-amber px-2.5 py-1 font-semibold text-ink shadow-sm hover:brightness-105 active:scale-95 transition text-[11px]"
+                >
+                  <span>Open</span>
+                  <ArrowRight size={11} />
+                </Link>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -252,10 +254,10 @@ export function OrbitMasteryMap({ chapters }: Props) {
           return (
             <span
               key={s}
-              className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2.5 py-1 text-[11px] text-paper/70 font-medium"
+              className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2.5 py-1 text-[11px] text-paper/70 font-medium transition hover:border-white/10"
             >
               <span className="h-2 w-2 rounded-full shrink-0 shadow-sm" style={{ background: color }} />
-              <span className="truncate max-w-[140px]">{s}</span>
+              <span className="whitespace-nowrap">{s}</span>
             </span>
           );
         })}
