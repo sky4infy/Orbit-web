@@ -11,8 +11,6 @@ import { ExamCard } from '@/components/ExamCard';
 import { AddExamModal } from '@/components/AddExamModal';
 import { EditExamModal } from '@/components/EditExamModal';
 import { AddTaskModal } from '@/components/AddTaskModal';
-import { CalibratePlanModal } from '@/components/CalibratePlanModal';
-import type { SuggestedTask } from '@/lib/planningEngine';
 import { useRequireAuth } from '@/lib/useRequireAuth';
 import { getCurriculumChapters } from '@/lib/curriculumData';
 import { syncAllUserData } from '@/lib/syncService';
@@ -110,7 +108,6 @@ export default function WeekPage() {
   const [addExamOpen, setAddExamOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExamReadinessRow | null>(null);
   const [planModalDate, setPlanModalDate] = useState<string | null>(null);
-  const [calibrateModalDate, setCalibrateModalDate] = useState<string | null>(null);
 
   // Read track preference once
   useEffect(() => {
@@ -261,33 +258,6 @@ export default function WeekPage() {
     }
   }
 
-  async function handleApplyCalibratedPlan(date: string, suggested: SuggestedTask[]) {
-    if (!userId) return;
-    for (const st of suggested) {
-      await createTask({
-        user_id: userId,
-        title: st.title,
-        chapter_id: st.chapterId,
-        scheduled_date: date,
-        time_slot: st.slot,
-        effort_level: st.effort,
-        priority: st.priority ?? 2,
-        position: 0,
-        status: 'pending',
-        incomplete_reason: null,
-        estimated_minutes: st.estimatedMinutes,
-        actual_minutes: null,
-      }).catch(() => {});
-    }
-    try {
-      const updated = await withTimeout(getTasksForDate(userId, date), 6000);
-      setDayTasks((prev) => ({ ...prev, [date]: updated }));
-    } catch {
-      // fallback
-    }
-    load(userId, track);
-  }
-
   return (
     <main className="mx-auto min-h-screen max-w-lg px-5 pb-32 pt-8">
       {/* Header */}
@@ -360,7 +330,6 @@ export default function WeekPage() {
               loadingTasks={loadingDay === day.date}
               onToggle={() => toggleDay(day.date)}
               onPlanDay={(d) => setPlanModalDate(d)}
-              onAutoCalibrateDay={(d) => setCalibrateModalDate(d)}
             />
           ))}
         </div>
@@ -400,24 +369,6 @@ export default function WeekPage() {
             const targetDate = planModalDate;
             setPlanModalDate(null);
             handleTaskCreated(targetDate);
-          }}
-        />
-      )}
-
-      {/* Auto-Calibrate Day Modal */}
-      {calibrateModalDate && (
-        <CalibratePlanModal
-          userId={userId ?? 'local-user'}
-          track={track}
-          date={calibrateModalDate}
-          tasks={dayTasks[calibrateModalDate] ?? []}
-          chapters={chapters}
-          open={Boolean(calibrateModalDate)}
-          onClose={() => setCalibrateModalDate(null)}
-          onApplyPlan={(suggested) => {
-            const targetDate = calibrateModalDate;
-            setCalibrateModalDate(null);
-            handleApplyCalibratedPlan(targetDate, suggested);
           }}
         />
       )}

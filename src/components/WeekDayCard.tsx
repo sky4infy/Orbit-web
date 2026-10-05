@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, isToday, isBefore, startOfDay } from 'date-fns';
-import { Plus, Sparkles } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { DayOverview, TaskWithChapter } from '@/api/tasks';
 
 interface Props {
@@ -12,7 +12,6 @@ interface Props {
   tasks: TaskWithChapter[] | undefined;
   loadingTasks: boolean;
   onPlanDay?: (date: string) => void;
-  onAutoCalibrateDay?: (date: string) => void;
 }
 
 export function WeekDayCard({
@@ -22,7 +21,6 @@ export function WeekDayCard({
   tasks,
   loadingTasks,
   onPlanDay,
-  onAutoCalibrateDay,
 }: Props) {
   const pct = day.total > 0 ? (day.completed / day.total) * 100 : 0;
   const date = new Date(day.date + 'T00:00:00');
@@ -100,32 +98,18 @@ export function WeekDayCard({
                   <p className="text-xs text-paper/40">
                     {isPast ? 'No missions were planned for this day.' : 'Nothing planned for this day yet.'}
                   </p>
-                  {(onPlanDay || onAutoCalibrateDay) && (
-                    <div className="flex items-center gap-2 pt-0.5">
-                      {onPlanDay && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPlanDay(day.date);
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-amber/15 border border-amber/30 px-3 py-1.5 text-xs font-semibold text-amber hover:bg-amber/25 active:scale-95 transition"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          Plan Day
-                        </button>
-                      )}
-                      {onAutoCalibrateDay && !isPast && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAutoCalibrateDay(day.date);
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-paper/70 hover:bg-white/10 hover:text-paper active:scale-95 transition"
-                        >
-                          <Sparkles className="h-3.5 w-3.5 text-sage" />
-                          Auto-Plan
-                        </button>
-                      )}
+                  {onPlanDay && (
+                    <div className="pt-0.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPlanDay(day.date);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-amber/15 border border-amber/30 px-3.5 py-1.5 text-xs font-semibold text-amber hover:bg-amber/25 active:scale-95 transition"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Plan Day
+                      </button>
                     </div>
                   )}
                 </div>
