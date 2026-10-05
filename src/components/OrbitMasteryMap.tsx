@@ -60,25 +60,39 @@ export function OrbitMasteryMap({ chapters }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const size = 340;
   const center = size / 2;
-  const maxRadius = center - 28;
+  const minRadius = 38;
+  const maxRadius = center - 26;
 
   const subjects = useMemo(() => Array.from(new Set(chapters.map((c) => c.subjectName))), [chapters]);
 
   const positioned = useMemo(() => {
-    // spread chapters evenly around their subject's ring by index
     const bySubject: Record<string, ChapterOverview[]> = {};
     for (const c of chapters) {
       bySubject[c.subjectName] ??= [];
       bySubject[c.subjectName].push(c);
     }
     const out: (ChapterOverview & { x: number; y: number; r: number })[] = [];
-    Object.entries(bySubject).forEach(([subject, list], subjectIdx) => {
-      const ringRadius = 55 + subjectIdx * ((maxRadius - 55) / Math.max(1, subjects.length - 1 || 1));
+    const numSubjects = Math.max(1, subjects.length);
+    const sectorAngle = (2 * Math.PI) / numSubjects;
+
+    subjects.forEach((subject, subjectIdx) => {
+      const list = bySubject[subject] || [];
+      const baseAngle = subjectIdx * sectorAngle - Math.PI / 2; // start from top
+
       list.forEach((c, i) => {
-        // lower confidence pulls the dot slightly inward from its subject ring
-        const inwardPull = ((100 - c.confidence) / 100) * 30;
-        const r = Math.max(30, ringRadius - inwardPull);
-        const angle = (i / list.length) * 2 * Math.PI + subjectIdx * 0.4;
+        // True Confidence-to-Radius Mapping:
+        // 0% confidence -> minRadius (38px, directly near center core)
+        // 100% confidence -> maxRadius (144px, outer Mastered ring)
+        const conf = Math.max(0, Math.min(100, c.confidence));
+        const r = minRadius + (conf / 100) * (maxRadius - minRadius);
+
+        // Angular spread within the subject's sector to prevent exact overlaps
+        const spread =
+          list.length > 1
+            ? ((i / (list.length - 1)) - 0.5) * (sectorAngle * 0.72)
+            : 0;
+        const angle = baseAngle + spread;
+
         out.push({
           ...c,
           x: center + r * Math.cos(angle),
@@ -88,7 +102,7 @@ export function OrbitMasteryMap({ chapters }: Props) {
       });
     });
     return out;
-  }, [chapters, subjects.length, maxRadius, center]);
+  }, [chapters, subjects, maxRadius, minRadius, center]);
 
   const activeChapter = useMemo(
     () => positioned.find((p) => p.id === selectedId) ?? null,
@@ -107,20 +121,32 @@ export function OrbitMasteryMap({ chapters }: Props) {
     <div className="relative select-none" onClick={() => setSelectedId(null)}>
       {/* SVG Orbital Canvas */}
       <svg width={size} height={size} className="mx-auto overflow-visible">
-        {/* Orbit rings, one per subject */}
-        {subjects.map((subject, idx) => {
-          const ringRadius = 55 + idx * ((maxRadius - 55) / Math.max(1, subjects.length - 1 || 1));
+        {/* Concentric Mastery Orbit Rings (25%, 50%, 75%, 100% Mastered) */}
+        {[0.25, 0.5, 0.75, 1.0].map((tier) => {
+          const r = minRadius + tier * (maxRadius - minRadius);
+          const isMastery = tier === 1.0;
           return (
-            <circle
-              key={subject}
-              cx={center}
-              cy={center}
-              r={ringRadius}
-              fill="none"
-              stroke={colorForSubject(subject)}
-              strokeOpacity={0.18}
-              strokeWidth={1}
-            />
+            <g key={tier}>
+              <circle
+                cx={center}
+                cy={center}
+                r={r}
+                fill="none"
+                stroke={isMastery ? 'rgba(52, 211, 153, 0.35)' : 'rgba(255, 255, 255, 0.08)'}
+                strokeWidth={isMastery ? 1.5 : 1}
+                strokeDasharray={isMastery ? undefined : '3 3'}
+              />
+              {isMastery && (
+                <text
+                  x={center}
+                  y={center - r - 4}
+                  textAnchor="middle"
+                  className="fill-emerald-400/70 font-mono text-[8px] uppercase tracking-wider font-semibold"
+                >
+                  Mastered (100%)
+                </text>
+              )}
+            </g>
           );
         })}
 
