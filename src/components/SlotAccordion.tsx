@@ -16,7 +16,15 @@ interface Props {
   onEdit: (task: TaskWithChapter) => void;
   onStartFocus?: (task: TaskWithChapter) => void;
   defaultOpenSlot?: TimeSlot;
+  activeSlot?: TimeSlot;
 }
+
+const SLOT_ORDER_INDEX: Record<TimeSlot, number> = {
+  morning: 0,
+  afternoon: 1,
+  evening: 2,
+  night: 3,
+};
 
 const SLOT_META: Record<TimeSlot, { label: string; time: string; icon: React.ReactNode }> = {
   morning: { label: 'Morning Slot', time: '05:00 – 12:00', icon: <Sunrise size={15} className="text-amber" /> },
@@ -34,7 +42,10 @@ export function SlotAccordion({
   onEdit,
   onStartFocus,
   defaultOpenSlot,
+  activeSlot,
 }: Props) {
+  const currentSlotTarget = activeSlot || defaultOpenSlot;
+
   // Keep the current/active slot or slots with pending tasks open by default
   const [openSlots, setOpenSlots] = useState<Record<TimeSlot, boolean>>(() => {
     const initial: Record<TimeSlot, boolean> = {
@@ -43,17 +54,18 @@ export function SlotAccordion({
       evening: false,
       night: false,
     };
-    if (defaultOpenSlot) {
-      initial[defaultOpenSlot] = true;
+    if (currentSlotTarget) {
+      initial[currentSlotTarget] = true;
     } else {
       initial.morning = true;
     }
-    // Also open any slot that has tasks if default slot has no tasks
-    const activeGroup = tasksBySlot.find((g) => g.slot === defaultOpenSlot);
-    if (!activeGroup || activeGroup.items.length === 0) {
-      const firstWithTasks = tasksBySlot.find((g) => g.items.length > 0);
-      if (firstWithTasks) initial[firstWithTasks.slot] = true;
-    }
+    // Also open any slot that has pending tasks
+    tasksBySlot.forEach((g) => {
+      const hasPending = g.items.some((t) => t.status === 'pending');
+      if (hasPending) {
+        initial[g.slot] = true;
+      }
+    });
     return initial;
   });
 
@@ -65,17 +77,25 @@ export function SlotAccordion({
     <div className="flex flex-col gap-3">
       {tasksBySlot.map(({ slot, items }) => {
         const completed = items.filter((t) => t.status === 'completed').length;
+        const pendingCount = items.filter((t) => t.status === 'pending').length;
         const pct = items.length > 0 ? (completed / items.length) * 100 : 0;
         const isOpen = openSlots[slot] ?? false;
         const allDone = items.length > 0 && completed === items.length;
+        const isCurrent = currentSlotTarget === slot;
+        const isPast = currentSlotTarget ? SLOT_ORDER_INDEX[slot] < SLOT_ORDER_INDEX[currentSlotTarget] : false;
+        const isOverdue = isPast && pendingCount > 0;
         const meta = SLOT_META[slot];
 
         return (
           <div
             key={slot}
             className={`rounded-2xl border transition-all ${
-              allDone
+              isCurrent && !allDone
+                ? 'border-amber/30 bg-ink-100/90 shadow-sm shadow-amber/5 ring-1 ring-amber/20'
+                : allDone
                 ? 'border-emerald-500/20 bg-emerald-500/5'
+                : isOverdue
+                ? 'border-amber-500/20 bg-ink-100'
                 : 'border-white/5 bg-ink-100 hover:border-white/10'
             }`}
           >
@@ -85,25 +105,39 @@ export function SlotAccordion({
               className="flex w-full items-center justify-between p-4 text-left"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                  isCurrent ? 'bg-amber/10' : 'bg-white/5'
+                }`}>
                   {meta.icon}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-display text-sm font-semibold text-paper">
                       {meta.label}
                     </span>
                     <span className="font-mono text-[10px] text-paper/30">
                       {meta.time}
                     </span>
+                    {isCurrent && !allDone && (
+                      <span className="flex items-center gap-1 rounded-full border border-amber/30 bg-amber/15 px-2 py-0.5 font-mono text-[9px] font-semibold text-amber uppercase tracking-wider">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse" />
+                        Active Now
+                      </span>
+                    )}
+                    {isOverdue && (
+                      <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-mono text-[9px] font-semibold text-amber uppercase tracking-wider">
+                        {pendingCount} Overdue
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-mono text-xs text-paper/50">
-                      {completed}/{items.length} completed
-                    </span>
-                    {allDone && (
-                      <span className="text-[10px] font-semibold text-emerald-400">
-                        • Complete
+                    {allDone ? (
+                      <span className="font-mono text-xs font-semibold text-emerald-400">
+                        All {items.length} completed ✓
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs text-paper/50">
+                        {completed}/{items.length} completed
                       </span>
                     )}
                   </div>

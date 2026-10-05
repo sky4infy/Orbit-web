@@ -89,6 +89,7 @@ export default function PlannerPage() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [dueRevisions, setDueRevisions] = useState<DueRevisionRow[]>([]);
   const [revisionSessionOpen, setRevisionSessionOpen] = useState(false);
+  const [pinnedTaskId, setPinnedTaskId] = useState<string | null>(null);
 
   // Load track preference once from localStorage
   useEffect(() => {
@@ -289,6 +290,19 @@ export default function PlannerPage() {
     setFocusTimerOpen(true);
   }
 
+  const now = new Date();
+  const activeSlot = currentSlot(now.getHours());
+  const todayStr = format(now, 'yyyy-MM-dd');
+  const isToday = date === todayStr;
+
+  const SLOT_INDEX: Record<TimeSlot, number> = {
+    morning: 0,
+    afternoon: 1,
+    evening: 2,
+    night: 3,
+  };
+  const activeSlotIdx = SLOT_INDEX[activeSlot];
+
   const tasksBySlot = SLOT_ORDER.map((slot) => ({
     slot,
     items: tasks.filter((t) => t.time_slot === slot),
@@ -299,8 +313,66 @@ export default function PlannerPage() {
     return { slot, total: items.length, completed: items.filter((t) => t.status === 'completed').length };
   });
 
-  const nextTask = tasksBySlot.flatMap((g) => g.items).find((t) => t.status === 'pending') ?? null;
-  const now = new Date();
+  // Intelligent Time-Aware Mission Prioritization
+  // 1. Pending tasks in the current active slot
+  const activeSlotPendingTasks = isToday
+    ? tasks.filter((t) => t.time_slot === activeSlot && t.status === 'pending')
+    : [];
+
+  // 2. Overdue pending tasks from earlier slots today (or all pending if viewing past date)
+  const overduePendingTasks = isToday
+    ? tasks.filter((t) => SLOT_INDEX[t.time_slot] < activeSlotIdx && t.status === 'pending')
+    : date < todayStr
+    ? tasks.filter((t) => t.status === 'pending')
+    : [];
+
+  // 3. Upcoming pending tasks for later slots today (or all pending if viewing future date)
+  const upcomingPendingTasks = isToday
+    ? tasks.filter((t) => SLOT_INDEX[t.time_slot] > activeSlotIdx && t.status === 'pending')
+    : date > todayStr
+    ? tasks.filter((t) => t.status === 'pending')
+    : [];
+
+  let nextTask: TaskWithChapter | null = null;
+  let isNextTaskOverdue = false;
+  let isShowingPinned = false;
+
+  // If user explicitly pinned/switched to a specific mission (e.g. catch up on missed afternoon mission)
+  if (pinnedTaskId) {
+    const pinned = tasks.find((t) => t.id === pinnedTaskId && t.status === 'pending');
+    if (pinned) {
+      nextTask = pinned;
+      isShowingPinned = true;
+      isNextTaskOverdue = isToday && SLOT_INDEX[pinned.time_slot] < activeSlotIdx;
+    }
+  }
+
+  if (!nextTask) {
+    if (isToday) {
+      if (activeSlotPendingTasks.length > 0) {
+        // High Priority: Pending task in current active time slot (e.g. Night slot at night)
+        nextTask = activeSlotPendingTasks[0];
+        isNextTaskOverdue = false;
+      } else if (overduePendingTasks.length > 0) {
+        // Secondary: Active slot is clear, catch up on missed tasks from earlier
+        nextTask = overduePendingTasks[0];
+        isNextTaskOverdue = true;
+      } else if (upcomingPendingTasks.length > 0) {
+        // Tertiary: Advance to upcoming slots
+        nextTask = upcomingPendingTasks[0];
+        isNextTaskOverdue = false;
+      }
+    } else {
+      nextTask = tasksBySlot.flatMap((g) => g.items).find((t) => t.status === 'pending') ?? null;
+      isNextTaskOverdue = date < todayStr;
+    }
+  }
+
+  // The first overdue task to highlight if active slot task is currently shown
+  const firstOverdueTask =
+    !isNextTaskOverdue && !isShowingPinned && overduePendingTasks.length > 0
+      ? overduePendingTasks[0]
+      : null;
 
   async function handleApplyCalibratedPlan(suggested: any[]) {
     const newTasks: TaskWithChapter[] = suggested.map((s, idx) => {
@@ -452,7 +524,15 @@ export default function PlannerPage() {
           <div className="mb-6">
             <NextMissionCard
               task={nextTask}
+              activeSlot={isToday ? activeSlot : undefined}
+              isOverdue={isNextTaskOverdue}
+              overdueTask={firstOverdueTask}
+              overdueCount={overduePendingTasks.length}
+              isShowingPinned={isShowingPinned}
               onStart={() => handleStartMission(nextTask)}
+              onDeferTask={moveToTomorrow}
+              onSwitchTask={(t) => setPinnedTaskId(t.id)}
+              onResetToActiveSlot={() => setPinnedTaskId(null)}
             />
           </div>
 
@@ -527,7 +607,8 @@ export default function PlannerPage() {
                 onRequestSkip={handleRequestSkip}
                 onEdit={setEditingTask}
                 onStartFocus={handleStartMission}
-                defaultOpenSlot={currentSlot(now.getHours())}
+                activeSlot={isToday ? activeSlot : undefined}
+                defaultOpenSlot={activeSlot}
               />
             )}
           </div>

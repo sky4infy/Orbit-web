@@ -138,13 +138,13 @@ export function SwipeableTaskRow({
               <span className={`rounded-md border px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider ${badgeColor}`}>
                 {taskType}
               </span>
-              <span className="text-[11px] font-medium text-amber/90 truncate max-w-[180px]">
+              <span className="text-[11px] font-medium text-amber/90 break-words line-clamp-1 max-w-full">
                 {task.chapter?.subject?.name} · {task.chapter?.name}
               </span>
             </div>
 
             <p
-              className={`mt-1 text-sm font-medium leading-snug truncate ${
+              className={`mt-1 text-sm font-medium leading-snug break-words line-clamp-2 ${
                 task.status === 'completed'
                   ? 'text-paper/40 line-through'
                   : 'text-paper group-hover:text-white transition-colors'

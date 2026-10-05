@@ -243,6 +243,9 @@ export async function getUnifiedAcademicState(
     }
   }
 
+  // Curriculum Chapters for live mapping and exam inference
+  const baseChapters = getCurriculumChapters(track);
+
   // 3. Evaluate Nearest Upcoming Exam
   const upcomingExams = exams
     .filter((e) => e.exam_date >= todayStr)
@@ -258,6 +261,25 @@ export async function getUnifiedAcademicState(
 
     if (nextExam.chapter_ids && nextExam.chapter_ids.length > 0) {
       nextExam.chapter_ids.forEach((id) => targetedChapterSet.add(id));
+    } else {
+      // Intelligently infer targeted chapters from exam title keywords (e.g. "COA midsem" -> "COA college subject")
+      const stopWords = new Set(['exam', 'midsem', 'endsem', 'test', 'quiz', 'target', 'unit', 'final', 'mid', 'assessment', 'theory', 'lab']);
+      const examWords = nextExam.name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 2 && !stopWords.has(w));
+
+      if (examWords.length > 0) {
+        baseChapters.forEach((ch) => {
+          const subLower = ch.subjectName.toLowerCase();
+          const chapLower = ch.name.toLowerCase();
+          const matches = examWords.some((w) => subLower.includes(w) || chapLower.includes(w));
+          if (matches) {
+            targetedChapterSet.add(ch.id);
+          }
+        });
+      }
     }
 
     targetExam = {
@@ -350,7 +372,6 @@ export async function getUnifiedAcademicState(
   };
 
   // 6. Map and Enrich Chapters with Live Dexie Data
-  const baseChapters = getCurriculumChapters(track);
   const overrides = getChapterOverrides();
 
   let masteredCount = 0;
@@ -387,7 +408,7 @@ export async function getUnifiedAcademicState(
     const weightageInfo = getChapterWeightage(c.id);
 
     // Is targeted by upcoming exam?
-    const isExamTargeted = targetedChapterSet.size === 0 ? true : targetedChapterSet.has(c.id);
+    const isExamTargeted = targetedChapterSet.size > 0 && targetedChapterSet.has(c.id);
 
     // Dynamic Priority Formula (Expected Return per Study Hour)
     // 1. Conceptual mistake penalty (heavier weight)
@@ -408,7 +429,11 @@ export async function getUnifiedAcademicState(
 
     // 5. Exam proximity & targeting multiplier
     const examUrgency = targetExam
-      ? Math.max(0.6, 12 / Math.max(1, targetExam.daysRemaining)) * (isExamTargeted ? 1.3 : 0.9)
+      ? isExamTargeted
+        ? Math.max(1.8, 15 / Math.max(1, targetExam.daysRemaining))
+        : targetedChapterSet.size > 0
+        ? 0.5
+        : 1.0
       : 1.0;
 
     const effectivePriorityScore = (mistakeWeight + confidenceGap + revisionBoost) * tierMultiplier * examUrgency;

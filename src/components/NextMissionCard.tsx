@@ -1,15 +1,35 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Clock, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Play, Clock, CheckCircle2, AlertCircle, Calendar, ArrowRight } from 'lucide-react';
+import type { TimeSlot } from '@/types/database.types';
 import type { TaskWithChapter } from '@/api/tasks';
 
 interface Props {
   task: TaskWithChapter | null;
+  activeSlot?: TimeSlot;
+  isOverdue?: boolean;
+  overdueTask?: TaskWithChapter | null;
+  overdueCount?: number;
+  isShowingPinned?: boolean;
   onStart: (taskId: string) => void;
+  onDeferTask?: (task: TaskWithChapter) => void;
+  onSwitchTask?: (task: TaskWithChapter) => void;
+  onResetToActiveSlot?: () => void;
 }
 
-export function NextMissionCard({ task, onStart }: Props) {
+export function NextMissionCard({
+  task,
+  activeSlot,
+  isOverdue = false,
+  overdueTask,
+  overdueCount = 0,
+  isShowingPinned = false,
+  onStart,
+  onDeferTask,
+  onSwitchTask,
+  onResetToActiveSlot,
+}: Props) {
   // Derive task type badge
   const titleLower = task?.title.toLowerCase() ?? '';
   let taskType = 'Core Mission';
@@ -34,19 +54,96 @@ export function NextMissionCard({ task, onStart }: Props) {
       {/* Subtle background glow */}
       <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-amber/5 blur-3xl" />
 
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="flex h-2 w-2 rounded-full bg-amber animate-pulse" />
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-paper/40">
-            Current Priority Mission
-          </p>
+      {/* Header bar */}
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isShowingPinned ? (
+            <>
+              <span className="flex h-2 w-2 rounded-full bg-indigo-400" />
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-indigo-300">
+                Focused Catch-up Mission
+              </p>
+              {onResetToActiveSlot && activeSlot && (
+                <button
+                  onClick={onResetToActiveSlot}
+                  className="font-mono text-[10px] text-amber hover:underline ml-1"
+                >
+                  ← Back to {activeSlot} slot
+                </button>
+              )}
+            </>
+          ) : isOverdue ? (
+            <>
+              <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+                Overdue Catch-up Mission
+              </p>
+              {task?.time_slot && (
+                <span className="font-mono text-[10px] text-paper/40">
+                  · {task.time_slot.toUpperCase()} SLOT
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="flex h-2 w-2 rounded-full bg-amber animate-pulse" />
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-paper/40">
+                Current Priority Mission
+              </p>
+              {activeSlot && task?.time_slot === activeSlot && (
+                <span className="font-mono text-[10px] font-semibold text-amber">
+                  · {activeSlot.toUpperCase()} SLOT
+                </span>
+              )}
+            </>
+          )}
         </div>
-        {task && (
-          <span className={`rounded-md border px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider ${badgeColor}`}>
-            {taskType}
-          </span>
-        )}
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isOverdue && (
+            <span className="rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-amber">
+              Overdue
+            </span>
+          )}
+          {task && (
+            <span className={`rounded-md border px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider ${badgeColor}`}>
+              {taskType}
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* Missed earlier slot banner (shown when currently focusing on active block task) */}
+      {!isOverdue && !isShowingPinned && overdueTask && (
+        <div className="mb-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle size={14} className="shrink-0 text-amber" />
+            <span className="truncate">
+              {overdueCount} task{overdueCount > 1 ? 's' : ''} missed from {overdueTask.time_slot}:{' '}
+              <strong className="font-medium text-paper">{overdueTask.title}</strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            {onSwitchTask && (
+              <button
+                onClick={() => onSwitchTask(overdueTask)}
+                className="rounded-lg bg-amber/20 px-2 py-1 font-mono text-[10px] font-semibold text-amber hover:bg-amber/30 transition"
+              >
+                Catch Up Now
+              </button>
+            )}
+            {onDeferTask && (
+              <button
+                onClick={() => onDeferTask(overdueTask)}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] text-paper/70 hover:text-paper hover:bg-white/10 transition"
+                title="Reschedule to tomorrow"
+              >
+                Move to Tomorrow
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {task ? (
@@ -81,13 +178,35 @@ export function NextMissionCard({ task, onStart }: Props) {
               </div>
             </div>
 
-            <button
-              onClick={() => onStart(task.id)}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-amber py-3 text-sm font-semibold text-ink shadow-lg shadow-amber/20 transition hover:brightness-105 active:scale-[0.99]"
-            >
-              <Play size={15} className="fill-current" />
-              <span>Start Deep Work</span>
-            </button>
+            {isOverdue ? (
+              <div className="mt-4 flex items-center gap-2.5">
+                <button
+                  onClick={() => onStart(task.id)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber py-3 text-sm font-semibold text-ink shadow-lg shadow-amber/20 transition hover:brightness-105 active:scale-[0.99]"
+                >
+                  <Play size={15} className="fill-current" />
+                  <span>Start Catch-up Deep Work</span>
+                </button>
+                {onDeferTask && (
+                  <button
+                    onClick={() => onDeferTask(task)}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-3 text-xs font-medium text-paper/70 hover:bg-white/10 hover:text-paper transition"
+                    title="Reschedule to tomorrow"
+                  >
+                    <Calendar size={14} />
+                    <span className="hidden xs:inline">Tomorrow</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => onStart(task.id)}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-amber py-3 text-sm font-semibold text-ink shadow-lg shadow-amber/20 transition hover:brightness-105 active:scale-[0.99]"
+              >
+                <Play size={15} className="fill-current" />
+                <span>Start Deep Work</span>
+              </button>
+            )}
           </motion.div>
         ) : (
           <motion.div

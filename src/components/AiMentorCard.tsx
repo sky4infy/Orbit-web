@@ -33,19 +33,23 @@ export function AiMentorCard({ userId = '', track, date, tasks, chapters, onAppl
       .catch((err) => console.warn('Failed to fetch academic state for mentor card:', err));
   }, [userId, track, tasks]);
 
-  // Find highest priority weak chapters from live academic memory or props fallback
-  const topWeakChapter = academicState?.chapters[0]?.name ?? (
-    chapters.find((c) => c.unresolvedMistakes > 0 || c.confidence < 60)?.name ??
-    (isOlympiadTrack ? 'Rotational Dynamics' : 'Dynamic Programming')
-  );
-
+  const targetExam = academicState?.targetExam;
+  const cognitive = academicState?.cognitiveProfile;
   const totalUnresolvedMistakes =
     academicState?.summary.totalUnresolvedMistakes ??
     chapters.reduce((sum, c) => sum + c.unresolvedMistakes, 0);
-
   const conceptualCount = academicState?.summary.conceptualMistakesCount ?? 0;
-  const targetExam = academicState?.targetExam;
-  const cognitive = academicState?.cognitiveProfile;
+
+  // Find highest priority weak chapters from live academic memory or props fallback
+  const examTargetedChapters = targetExam
+    ? academicState?.chapters.filter((c) => c.isExamTargeted)
+    : [];
+
+  const topWeakChapter =
+    examTargetedChapters?.[0]?.name ??
+    academicState?.chapters[0]?.name ??
+    chapters.find((c) => c.unresolvedMistakes > 0 || c.confidence < 60)?.name ??
+    (isOlympiadTrack ? 'Rotational Dynamics' : 'Dynamic Programming');
 
   // Calculate planned minutes
   const totalPlannedMinutes = tasks.reduce((sum, t) => sum + (t.estimated_minutes ?? 45), 0);
@@ -153,11 +157,13 @@ export function AiMentorCard({ userId = '', track, date, tasks, chapters, onAppl
           </p>
 
           {/* Diagnostic Meta Bar */}
-          <div className="mt-3 flex items-center justify-between border-t border-white/5 pt-2.5 text-[11px] text-paper/50 font-mono">
-            <span>Target Load: {plannedHours} hrs</span>
-            <span>Focus: {topWeakChapter}</span>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-y-1 gap-x-2 border-t border-white/5 pt-2.5 text-[11px] text-paper/50 font-mono">
+            <span className="shrink-0">Target Load: {plannedHours} hrs</span>
+            <span className="truncate max-w-[180px] sm:max-w-none text-paper/70" title={topWeakChapter}>
+              Focus: {topWeakChapter}
+            </span>
             {targetExam && (
-              <span className="text-amber">
+              <span className="shrink-0 text-amber font-semibold">
                 {targetExam.daysRemaining}d to {targetExam.name.split(' ')[0]}
               </span>
             )}
@@ -165,16 +171,16 @@ export function AiMentorCard({ userId = '', track, date, tasks, chapters, onAppl
         </div>
 
         {/* 1-Tap Auto-Calibrate Action Button */}
-        <div className="mt-3.5 flex items-center justify-between">
+        <div className="mt-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <button
             onClick={handleOpenCalibration}
-            className="flex items-center gap-2 rounded-xl bg-amber/15 px-3.5 py-2 text-xs font-semibold text-amber ring-1 ring-amber/30 transition hover:bg-amber/25"
+            className="flex items-center justify-center gap-2 rounded-xl bg-amber/15 px-3.5 py-2 text-xs font-semibold text-amber ring-1 ring-amber/30 transition hover:bg-amber/25 w-full sm:w-auto"
           >
             <Zap size={14} className="fill-amber" />
             <span>Auto-Calibrate Today's Plan</span>
           </button>
 
-          <span className="text-[11px] text-paper/40">Zero-overload engine</span>
+          <span className="text-[11px] text-paper/40 text-center sm:text-right">Zero-overload engine</span>
         </div>
 
         {/* Expanded Interactive Coaching Q&A */}
