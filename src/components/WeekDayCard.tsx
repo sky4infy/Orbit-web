@@ -1,7 +1,8 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { format, isToday } from 'date-fns';
+import { format, isToday, isBefore, startOfDay } from 'date-fns';
+import { Plus, Sparkles } from 'lucide-react';
 import type { DayOverview, TaskWithChapter } from '@/api/tasks';
 
 interface Props {
@@ -10,12 +11,23 @@ interface Props {
   onToggle: () => void;
   tasks: TaskWithChapter[] | undefined;
   loadingTasks: boolean;
+  onPlanDay?: (date: string) => void;
+  onAutoCalibrateDay?: (date: string) => void;
 }
 
-export function WeekDayCard({ day, isOpen, onToggle, tasks, loadingTasks }: Props) {
+export function WeekDayCard({
+  day,
+  isOpen,
+  onToggle,
+  tasks,
+  loadingTasks,
+  onPlanDay,
+  onAutoCalibrateDay,
+}: Props) {
   const pct = day.total > 0 ? (day.completed / day.total) * 100 : 0;
   const date = new Date(day.date + 'T00:00:00');
   const today = isToday(date);
+  const isPast = !today && isBefore(date, startOfDay(new Date()));
 
   return (
     <div
@@ -53,20 +65,70 @@ export function WeekDayCard({ day, isOpen, onToggle, tasks, loadingTasks }: Prop
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <div className="mt-3 flex flex-col gap-1.5 border-t border-white/5 pt-3">
+            <div className="mt-3 flex flex-col gap-2 border-t border-white/5 pt-3">
               {loadingTasks ? (
                 <p className="text-xs text-paper/30">Loading…</p>
               ) : tasks && tasks.length > 0 ? (
-                tasks.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between text-sm">
-                    <span className={t.status === 'completed' ? 'text-paper/30 line-through' : 'text-paper/80'}>
-                      {t.title}
-                    </span>
-                    <span className="text-[10px] text-paper/30">{t.time_slot}</span>
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    {tasks.map((t) => (
+                      <div key={t.id} className="flex items-center justify-between text-sm">
+                        <span className={t.status === 'completed' ? 'text-paper/30 line-through' : 'text-paper/80'}>
+                          {t.title}
+                        </span>
+                        <span className="text-[10px] text-paper/30">{t.time_slot}</span>
+                      </div>
+                    ))}
                   </div>
-                ))
+                  {onPlanDay && (
+                    <div className="pt-1.5 border-t border-white/5 flex items-center justify-between">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPlanDay(day.date);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-amber/80 hover:text-amber transition active:scale-95"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Add mission
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
-                <p className="text-xs text-paper/30">Nothing planned this day.</p>
+                <div className="py-2 text-center flex flex-col items-center gap-2.5">
+                  <p className="text-xs text-paper/40">
+                    {isPast ? 'No missions were planned for this day.' : 'Nothing planned for this day yet.'}
+                  </p>
+                  {(onPlanDay || onAutoCalibrateDay) && (
+                    <div className="flex items-center gap-2 pt-0.5">
+                      {onPlanDay && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPlanDay(day.date);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-amber/15 border border-amber/30 px-3 py-1.5 text-xs font-semibold text-amber hover:bg-amber/25 active:scale-95 transition"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Plan Day
+                        </button>
+                      )}
+                      {onAutoCalibrateDay && !isPast && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAutoCalibrateDay(day.date);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-paper/70 hover:bg-white/10 hover:text-paper active:scale-95 transition"
+                        >
+                          <Sparkles className="h-3.5 w-3.5 text-sage" />
+                          Auto-Plan
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>
