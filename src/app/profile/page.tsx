@@ -20,8 +20,8 @@ function withTimeout<T>(promise: Promise<T>, ms = 800): Promise<T> {
 export default function ProfilePage() {
   const { userId, user, authLoading } = useRequireAuth();
   const [name, setName] = useState('Student');
-  const [streak, setStreak] = useState(4);
-  const [level, setLevel] = useState<LevelInfo | null>({ level: 2, xp: 12, xpIntoLevel: 2, xpForNextLevel: 10 });
+  const [streak, setStreak] = useState(1);
+  const [level, setLevel] = useState<LevelInfo | null>({ level: 1, xp: 40, xpIntoLevel: 40, xpForNextLevel: 50 });
   const [activeTrack, setActiveTrack] = useState<TrackType>('jee_nsep');
   const [partnerName, setPartnerName] = useState('Study Partner');
   const [loading, setLoading] = useState(false);
@@ -152,8 +152,10 @@ export default function ProfilePage() {
               <Trophy size={14} className="text-sage" />
               <span>Mastery Level</span>
             </div>
-            <p className="font-display text-2xl font-semibold text-paper">{level.level}</p>
-            <p className="text-[11px] text-paper/30 mt-0.5">{level.xp} Total XP earned</p>
+            <p className="font-display text-2xl font-semibold text-paper">Level {level.level}</p>
+            <p className="text-[11px] text-paper/30 mt-0.5">
+              {level.xpIntoLevel} / {level.xpForNextLevel} XP to Level {level.level + 1}
+            </p>
           </div>
         </div>
       )}

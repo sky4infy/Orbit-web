@@ -76,8 +76,8 @@ export default function PlannerPage() {
       unresolvedMistakes: c.unresolvedMistakes,
     }))
   );
-  const [streak, setStreak] = useState(4);
-  const [level, setLevel] = useState<LevelInfo>({ level: 2, xp: 12, xpIntoLevel: 2, xpForNextLevel: 10 });
+  const [streak, setStreak] = useState(1);
+  const [level, setLevel] = useState<LevelInfo>({ level: 1, xp: 40, xpIntoLevel: 40, xpForNextLevel: 50 });
   const [loading, setLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -608,14 +608,14 @@ export default function PlannerPage() {
 
             {/* Integrated Streak & XP Pill */}
             <div className="mt-3 flex items-center gap-3 rounded-full border border-white/5 bg-ink-100/70 px-4 py-1.5 backdrop-blur-md">
-              <div className="flex items-center gap-1 text-xs font-medium text-amber">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-amber">
                 <Flame size={14} className="fill-amber text-amber" />
                 <span>{streak} day streak</span>
               </div>
               <span className="text-white/10">•</span>
-              <div className="flex items-center gap-1 text-xs font-medium text-paper/70">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-paper/70">
                 <Trophy size={13} className="text-amber-400" />
-                <span>Level {level.level} ({level.xp} XP)</span>
+                <span>Level {level.level} ({level.xpIntoLevel}/{level.xpForNextLevel} XP)</span>
               </div>
             </div>
           </div>

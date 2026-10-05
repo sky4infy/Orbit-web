@@ -1,32 +1,75 @@
 import { supabase } from '@/lib/supabase/client';
 import { format, subDays } from 'date-fns';
+import { db } from '@/lib/db';
 
 /**
- * Consecutive-day streak: counts backward from today, day by day, as long
- * as at least one task was completed that day. Stops at the first gap.
- * Pure aggregation over `task` — no separate streak table needed, it's
- * always derivable from the data you already have.
+ * Consecutive-day streak:
+ * - If user completed a mission TODAY, streak is active and extended.
+ * - If user completed a mission YESTERDAY, streak is ACTIVE (they have until midnight tonight to extend it!).
+ * - If neither today nor yesterday had any completed missions, streak is 0.
+ * Combines local Dexie database and Supabase cloud for seamless offline & cross-device accuracy.
  */
-export async function getStreak(userId: string, lookbackDays = 60): Promise<number> {
+export async function getStreak(userId?: string, lookbackDays = 60): Promise<number> {
   const since = format(subDays(new Date(), lookbackDays), 'yyyy-MM-dd');
-  const { data, error } = await supabase
-    .from('task')
-    .select('scheduled_date, status')
-    .eq('user_id', userId)
-    .eq('status', 'completed')
-    .gte('scheduled_date', since);
+  const daysWithCompletion = new Set<string>();
 
-  if (error) throw error;
+  // 1. Query local Dexie DB (instant, offline-first)
+  try {
+    if (typeof window !== 'undefined' && db?.tasks) {
+      const localCompleted = await db.tasks.where('status').equals('completed').toArray();
+      for (const t of localCompleted) {
+        if (t.scheduled_date && t.scheduled_date >= since) {
+          daysWithCompletion.add(t.scheduled_date);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed reading local tasks for streak:', err);
+  }
 
-  const rows = (data ?? []) as unknown as { scheduled_date: string; status: string }[];
-  const daysWithCompletion = new Set(rows.map((t) => t.scheduled_date));
+  // 2. Query Supabase cloud (cross-device sync)
+  if (userId && userId !== 'local-user') {
+    try {
+      const { data, error } = await supabase
+        .from('task')
+        .select('scheduled_date, status')
+        .eq('user_id', userId)
+        .eq('status', 'completed')
+        .gte('scheduled_date', since);
+
+      if (!error && data) {
+        const rows = data as unknown as { scheduled_date: string; status: string }[];
+        for (const r of rows) {
+          if (r.scheduled_date) daysWithCompletion.add(r.scheduled_date);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed querying cloud tasks for streak:', err);
+    }
+  }
+
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+
+  let cursor: Date;
+
+  if (daysWithCompletion.has(todayStr)) {
+    // Completed at least one mission today -> streak extends through today
+    cursor = new Date();
+  } else if (daysWithCompletion.has(yesterdayStr)) {
+    // Completed mission yesterday, today in progress -> streak maintained from yesterday
+    cursor = subDays(new Date(), 1);
+  } else {
+    // Neither today nor yesterday had any completed missions -> streak is 0
+    return 0;
+  }
 
   let streak = 0;
-  let cursor = new Date();
   while (daysWithCompletion.has(format(cursor, 'yyyy-MM-dd'))) {
     streak += 1;
     cursor = subDays(cursor, 1);
   }
+
   return streak;
 }
 
@@ -37,29 +80,63 @@ export interface LevelInfo {
   xpForNextLevel: number;
 }
 
-// Simple curve: each level needs progressively more completed tasks.
-// Deliberately not tunable/ML-driven yet — a level-up should feel earned
-// but this is a placeholder curve, easy to rebalance once real usage
-// shows whether it feels too fast or too slow.
-function levelFromXp(xp: number): LevelInfo {
+// 10 XP per completed mission.
+// Level 1: 0 - 50 XP (5 missions to reach Level 2)
+// Level 2: 50 - 120 XP (7 missions to reach Level 3)
+// Level 3: 120 - 210 XP (9 missions to reach Level 4)
+function levelFromCompletedTasks(taskCount: number): LevelInfo {
+  const totalXp = taskCount * 10;
   let level = 1;
-  let remaining = xp;
-  let needed = 5; // XP needed to go from level 1 -> 2
-  while (remaining >= needed) {
-    remaining -= needed;
+  let remainingXp = totalXp;
+  let neededForNext = 50;
+
+  while (remainingXp >= neededForNext) {
+    remainingXp -= neededForNext;
     level += 1;
-    needed = Math.round(needed * 1.35);
+    neededForNext = Math.round((neededForNext * 1.35) / 10) * 10;
   }
-  return { level, xp, xpIntoLevel: remaining, xpForNextLevel: needed };
+
+  return {
+    level,
+    xp: totalXp,
+    xpIntoLevel: remainingXp,
+    xpForNextLevel: neededForNext,
+  };
 }
 
-export async function getLevelInfo(userId: string): Promise<LevelInfo> {
-  const { count, error } = await supabase
-    .from('task')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .eq('status', 'completed');
+export async function getLevelInfo(userId?: string): Promise<LevelInfo> {
+  const completedTaskIds = new Set<string>();
 
-  if (error) throw error;
-  return levelFromXp(count ?? 0);
+  // 1. Local Dexie tasks
+  try {
+    if (typeof window !== 'undefined' && db?.tasks) {
+      const localTasks = await db.tasks.where('status').equals('completed').toArray();
+      for (const t of localTasks) {
+        if (t.id) completedTaskIds.add(t.id);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed reading local completed tasks for XP:', err);
+  }
+
+  // 2. Cloud Supabase tasks
+  if (userId && userId !== 'local-user') {
+    try {
+      const { data, error } = await supabase
+        .from('task')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('status', 'completed');
+
+      if (!error && data) {
+        for (const t of data as { id: string }[]) {
+          if (t.id) completedTaskIds.add(t.id);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed querying cloud completed tasks for XP:', err);
+    }
+  }
+
+  return levelFromCompletedTasks(completedTaskIds.size);
 }
