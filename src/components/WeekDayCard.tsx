@@ -78,7 +78,7 @@ export function WeekDayCard({
                       </div>
                     ))}
                   </div>
-                  {onPlanDay && (
+                  {onPlanDay && !isPast && (
                     <div className="pt-1.5 border-t border-white/5 flex items-center justify-between">
                       <button
                         onClick={(e) => {
@@ -98,7 +98,7 @@ export function WeekDayCard({
                   <p className="text-xs text-paper/40">
                     {isPast ? 'No missions were planned for this day.' : 'Nothing planned for this day yet.'}
                   </p>
-                  {onPlanDay && (
+                  {onPlanDay && !isPast && (
                     <div className="pt-0.5">
                       <button
                         onClick={(e) => {
