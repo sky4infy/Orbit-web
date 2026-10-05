@@ -8,6 +8,7 @@ import { ensureChapterInCloud } from '@/lib/syncService';
 import {
   db,
   getLocalTasksForDate,
+  getLocalMissedTasks,
   saveLocalTask,
   updateLocalTaskStatus,
   updateLocalTask,
@@ -283,19 +284,98 @@ export async function closeTask(
 
 export async function moveTaskToTomorrow(userId: string, taskId: string) {
   const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+  await rescheduleTask(userId, taskId, tomorrow);
+}
 
-  if (typeof window !== 'undefined') {
-    await updateLocalTask(taskId, { scheduled_date: tomorrow, status: 'pending', incomplete_reason: null });
+export async function rescheduleTask(
+  userId: string,
+  taskId: string,
+  newDate: string,
+  newSlot?: TimeSlot
+) {
+  const updates: Partial<LocalTask> = {
+    scheduled_date: newDate,
+    status: 'pending',
+    incomplete_reason: null,
+  };
+  if (newSlot) {
+    updates.time_slot = newSlot;
   }
 
-  if (userId) {
+  if (typeof window !== 'undefined') {
+    await updateLocalTask(taskId, updates);
+  }
+
+  if (userId && userId !== 'local-user') {
     Promise.resolve(
       supabase
         .from('task')
-        .update({ scheduled_date: tomorrow, status: 'pending', incomplete_reason: null } as never)
+        .update(updates as never)
         .eq('id', taskId)
     ).catch(() => {});
   }
+}
+
+export async function getMissedTasks(userId: string, beforeDate: string): Promise<TaskWithChapter[]> {
+  const chapters = getCurriculumChapters('all');
+  const chapterMap = new Map(chapters.map((c) => [c.id, c]));
+
+  const enrichChapter = (t: any): TaskWithChapter => {
+    let chap = t.chapter;
+    if (!chap || !chap.name || !chap.subject?.name || chap.subject?.name === 'Custom Subject' || chap.subject?.name === 'Custom Chapter') {
+      const resolvedChapId = resolveChapterId(t.chapter_id || chap?.id);
+      const found = chapterMap.get(resolvedChapId) || chapterMap.get(t.chapter_id);
+      if (found) {
+        chap = {
+          id: found.id,
+          name: found.name,
+          subject: {
+            id: found.subjectId,
+            name: found.subjectName,
+          },
+        };
+      }
+    }
+    return {
+      ...t,
+      chapter: chap ?? null,
+    };
+  };
+
+  // 1. Supabase cloud first
+  if (userId && userId !== 'local-user') {
+    try {
+      const { data, error } = await supabase
+        .from('task')
+        .select(
+          `id, title, scheduled_date, time_slot, effort_level, priority, position, status,
+           incomplete_reason, estimated_minutes, actual_minutes,
+           chapter:chapter_id ( id, name, subject:subject_id ( id, name ) )`
+        )
+        .eq('user_id', userId)
+        .lt('scheduled_date', beforeDate)
+        .eq('status', 'pending')
+        .order('scheduled_date', { ascending: false });
+
+      if (!error && data) {
+        const rawList = (data as any[]) ?? [];
+        return rawList.filter((d) => !isStarterTask(d.title)).map(enrichChapter);
+      }
+    } catch (err) {
+      console.warn('Cloud missed tasks query error:', err);
+    }
+  }
+
+  // 2. Local Dexie fallback
+  const localList = await getLocalMissedTasks(userId, beforeDate);
+  return localList.map((t) => {
+    const resolvedChapId = resolveChapterId(t.chapter_id);
+    const chap = chapterMap.get(resolvedChapId) || chapterMap.get(t.chapter_id);
+    return {
+      ...t,
+      chapter: chap ? { id: chap.id, name: chap.name, subject: { id: chap.subjectId, name: chap.subjectName } } : null,
+    };
+  });
 }
 
 export async function revertTaskToPending(taskId: string, originalDate: string) {

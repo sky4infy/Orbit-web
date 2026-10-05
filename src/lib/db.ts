@@ -162,6 +162,22 @@ export async function getLocalTasksForDate(userId: string, date: string, track: 
   }
 }
 
+export async function getLocalMissedTasks(userId: string, beforeDate: string): Promise<LocalTask[]> {
+  if (typeof window === 'undefined') return [];
+  try {
+    const list = await db.tasks
+      .where('scheduled_date')
+      .below(beforeDate)
+      .and((t) => (t.user_id === userId || !t.user_id) && t.status === 'pending')
+      .toArray();
+
+    return userId ? list.filter((t) => !isStarterTask(t.title)) : list;
+  } catch (err) {
+    console.warn('Dexie read missed tasks failed:', err);
+    return [];
+  }
+}
+
 export async function saveLocalTask(task: LocalTask) {
   if (typeof window === 'undefined') return;
   await db.tasks.put(task);

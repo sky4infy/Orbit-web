@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import {
   getTasksForDate,
+  getMissedTasks,
+  rescheduleTask,
   closeTask,
   moveTaskToTomorrow,
   revertTaskToPending,
@@ -18,6 +20,7 @@ import type { IncompleteReason, TimeSlot, TrackType } from '@/types/database.typ
 import { OrbitDayRing } from '@/components/OrbitDayRing';
 import { NextMissionCard } from '@/components/NextMissionCard';
 import { SlotAccordion } from '@/components/SlotAccordion';
+import { MissedTasksVault } from '@/components/MissedTasksVault';
 import { AddTaskModal } from '@/components/AddTaskModal';
 import { EditTaskModal } from '@/components/EditTaskModal';
 import { UndoToast, type ToastState } from '@/components/UndoToast';
@@ -90,6 +93,7 @@ export default function PlannerPage() {
   const [dueRevisions, setDueRevisions] = useState<DueRevisionRow[]>([]);
   const [revisionSessionOpen, setRevisionSessionOpen] = useState(false);
   const [pinnedTaskId, setPinnedTaskId] = useState<string | null>(null);
+  const [missedTasks, setMissedTasks] = useState<TaskWithChapter[]>([]);
 
   // Load track preference once from localStorage
   useEffect(() => {
@@ -116,9 +120,14 @@ export default function PlannerPage() {
         withTimeout(getLevelInfo(uid), 6000),
         withTimeout(getDisplayName(uid), 6000),
         withTimeout(getDueRevisions(uid, date, activeTrack), 6000),
+        withTimeout(getMissedTasks(uid, date), 6000),
       ]);
 
-      const [taskRows, chapterRows, streakCount, levelInfo, displayName, dueRevRows] = results;
+      const [taskRows, chapterRows, streakCount, levelInfo, displayName, dueRevRows, missedRows] = results;
+
+      if (missedRows && missedRows.status === 'fulfilled') {
+        setMissedTasks(missedRows.value);
+      }
 
       if (dueRevRows && dueRevRows.status === 'fulfilled') {
         setDueRevisions(dueRevRows.value);
@@ -283,6 +292,55 @@ export default function PlannerPage() {
     } catch {
       refresh();
     }
+  }
+
+  async function handleRescheduleMissedToToday(task: TaskWithChapter) {
+    const targetSlot = activeSlot;
+    setMissedTasks((prev) => prev.filter((t) => t.id !== task.id));
+    setTasks((prev) => [
+      ...prev,
+      { ...task, scheduled_date: date, time_slot: targetSlot, status: 'pending' },
+    ]);
+
+    await rescheduleTask(userId || '', task.id, date, targetSlot);
+    setToast({
+      id: `resched-${task.id}-${Date.now()}`,
+      message: `Rescheduled "${task.title}" to today (${targetSlot} slot)!`,
+    });
+  }
+
+  async function handleRescheduleMissedCustom(task: TaskWithChapter, newDate: string, newSlot?: TimeSlot) {
+    const slot = newSlot || task.time_slot;
+    setMissedTasks((prev) => prev.filter((t) => t.id !== task.id));
+    if (newDate === date) {
+      setTasks((prev) => [
+        ...prev,
+        { ...task, scheduled_date: newDate, time_slot: slot, status: 'pending' },
+      ]);
+    }
+
+    await rescheduleTask(userId || '', task.id, newDate, slot);
+    setToast({
+      id: `resched-custom-${task.id}-${Date.now()}`,
+      message: `Rescheduled "${task.title}" to ${newDate}!`,
+    });
+  }
+
+  async function handleRescheduleAllToToday() {
+    const toMove = [...missedTasks];
+    setMissedTasks([]);
+    setTasks((prev) => [
+      ...prev,
+      ...toMove.map((t) => ({ ...t, scheduled_date: date, status: 'pending' as const })),
+    ]);
+
+    for (const t of toMove) {
+      await rescheduleTask(userId || '', t.id, date, t.time_slot);
+    }
+    setToast({
+      id: `resched-all-${Date.now()}`,
+      message: `Moved all ${toMove.length} missed missions into today!`,
+    });
   }
 
   function handleStartMission(task: TaskWithChapter | null) {
@@ -612,6 +670,20 @@ export default function PlannerPage() {
               />
             )}
           </div>
+
+          {/* Missed Missions Vault (Previous Days Catch-up & Reschedule) */}
+          {missedTasks.length > 0 && (
+            <div className="mb-6">
+              <MissedTasksVault
+                missedTasks={missedTasks}
+                todayDate={date}
+                onRescheduleToToday={handleRescheduleMissedToToday}
+                onRescheduleCustom={handleRescheduleMissedCustom}
+                onRescheduleAllToToday={handleRescheduleAllToToday}
+                onRequestSkip={handleRequestSkip}
+              />
+            </div>
+          )}
 
           {/* Evening Reflection Prompt Banner */}
           <div className="mt-8 rounded-2xl border border-white/5 bg-gradient-to-r from-amber/10 via-ink-50 to-indigo-950/20 p-4 shadow-sm">
