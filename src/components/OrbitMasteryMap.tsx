@@ -1,15 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowRight, X } from 'lucide-react';
 import type { ChapterOverview } from '@/api/chapters';
 
 interface Props {
   chapters: ChapterOverview[];
 }
 
-// Distinct hue per subject ring, warm-to-cool so Physics/Chem/Maths/Bio
-// read as different "orbits" at a glance, not just a color legend.
+// Distinct base hues for predefined standard subjects
 const SUBJECT_COLORS: Record<string, string> = {
   Physics: '#6C93E0',
   Chemistry: '#4FB894',
@@ -23,8 +24,30 @@ const SUBJECT_COLORS: Record<string, string> = {
   'Core Computer Science': '#F97316',
 };
 
+// Vibrant curated celestial palette for custom college subjects
+const DYNAMIC_PALETTE = [
+  '#EC4899', // Pink / Rose
+  '#F59E0B', // Amber
+  '#10B981', // Emerald
+  '#6366F1', // Indigo
+  '#8B5CF6', // Violet
+  '#06B6D4', // Cyan
+  '#14B8A6', // Teal
+  '#E11D48', // Crimson
+  '#3B82F6', // Blue
+  '#D946EF', // Fuchsia
+];
+
 function colorForSubject(name: string): string {
-  return SUBJECT_COLORS[name] ?? '#B8B5A8';
+  if (SUBJECT_COLORS[name]) return SUBJECT_COLORS[name];
+  // Deterministic color hash based on subject name
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % DYNAMIC_PALETTE.length;
+  return DYNAMIC_PALETTE[idx];
 }
 
 /**
@@ -34,7 +57,7 @@ function colorForSubject(name: string): string {
  * near the center is exactly the "weak spot" a student should look at.
  */
 export function OrbitMasteryMap({ chapters }: Props) {
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const size = 340;
   const center = size / 2;
   const maxRadius = center - 28;
@@ -67,18 +90,24 @@ export function OrbitMasteryMap({ chapters }: Props) {
     return out;
   }, [chapters, subjects.length, maxRadius, center]);
 
+  const activeChapter = useMemo(
+    () => positioned.find((p) => p.id === selectedId) ?? null,
+    [positioned, selectedId]
+  );
+
   if (chapters.length === 0) {
     return (
-      <div className="flex h-[340px] items-center justify-center rounded-xl2 border border-dashed border-white/10 text-sm text-paper/40">
+      <div className="flex h-[340px] items-center justify-center rounded-2xl border border-dashed border-white/10 text-sm text-paper/40">
         Seed subjects and chapters to see your orbit take shape.
       </div>
     );
   }
 
   return (
-    <div className="relative">
+    <div className="relative select-none" onClick={() => setSelectedId(null)}>
+      {/* SVG Orbital Canvas */}
       <svg width={size} height={size} className="mx-auto overflow-visible">
-        {/* orbit rings, one per subject */}
+        {/* Orbit rings, one per subject */}
         {subjects.map((subject, idx) => {
           const ringRadius = 55 + idx * ((maxRadius - 55) / Math.max(1, subjects.length - 1 || 1));
           return (
@@ -89,77 +118,151 @@ export function OrbitMasteryMap({ chapters }: Props) {
               r={ringRadius}
               fill="none"
               stroke={colorForSubject(subject)}
-              strokeOpacity={0.15}
+              strokeOpacity={0.18}
               strokeWidth={1}
             />
           );
         })}
 
-        {/* center — "you" */}
+        {/* Center core — "You" */}
         <circle cx={center} cy={center} r={6} fill="currentColor" className="fill-paper" />
         <circle
           cx={center}
           cy={center}
-          r={10}
+          r={11}
           fill="none"
           stroke="currentColor"
-          className="text-paper"
-          strokeOpacity={0.3}
+          className="text-paper/40"
+          strokeWidth={1}
         />
 
+        {/* Chapter Celestial Nodes */}
         {positioned.map((c) => {
           const dotSize = 5 + Math.min(c.unresolvedMistakes, 6) * 1.6;
           const color = colorForSubject(c.subjectName);
-          const isHovered = hovered === c.id;
+          const isSelected = selectedId === c.id;
+
           return (
-            <g key={c.id}>
+            <g
+              key={c.id}
+              className="cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedId((prev) => (prev === c.id ? null : c.id));
+              }}
+            >
+              {/* Invisible expanded hit target for touch devices */}
+              <circle cx={c.x} cy={c.y} r={dotSize + 10} fill="transparent" />
+
+              {/* Pulsing ring if selected */}
+              {isSelected && (
+                <circle
+                  cx={c.x}
+                  cy={c.y}
+                  r={dotSize + 5}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={1.5}
+                  className="animate-pulse"
+                />
+              )}
+
+              {/* Core Chapter Dot */}
               <motion.circle
                 cx={c.x}
                 cy={c.y}
                 r={dotSize}
                 fill={color}
-                fillOpacity={c.unresolvedMistakes > 0 ? 0.95 : 0.6}
-                stroke={isHovered ? '#F6F3EC' : 'none'}
-                strokeWidth={1.5}
+                fillOpacity={c.unresolvedMistakes > 0 ? 0.95 : 0.75}
+                stroke={isSelected ? '#FFFFFF' : 'rgba(255,255,255,0.2)'}
+                strokeWidth={isSelected ? 2 : 0.8}
                 initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                onMouseEnter={() => setHovered(c.id)}
-                onMouseLeave={() => setHovered(null)}
-                style={{ cursor: 'pointer' }}
+                animate={{ scale: isSelected ? 1.25 : 1 }}
+                transition={{ type: 'spring', stiffness: 220, damping: 16 }}
+                onMouseEnter={() => setSelectedId(c.id)}
               />
             </g>
           );
         })}
       </svg>
 
-      {hovered && (
-        <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-lg border border-white/10 bg-ink-100 px-3 py-2 text-xs shadow-xl">
-          {(() => {
-            const c = positioned.find((p) => p.id === hovered)!;
-            return (
-              <>
-                <p className="font-semibold">{c.name}</p>
-                <p className="text-paper/50">
-                  {c.subjectName} · confidence {c.confidence}%
-                  {c.unresolvedMistakes > 0 && ` · ${c.unresolvedMistakes} open mistakes`}
-                </p>
-              </>
-            );
-          })()}
-        </div>
-      )}
+      {/* Floating Interactive Chapter Inspection Card */}
+      <AnimatePresence>
+        {activeChapter && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.96 }}
+            transition={{ duration: 0.15 }}
+            onClick={(e) => e.stopPropagation()}
+            className="absolute left-1/2 top-2 z-20 w-[92%] max-w-[280px] -translate-x-1/2 rounded-2xl border border-white/15 bg-ink-100/95 p-3.5 shadow-2xl backdrop-blur-md"
+          >
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ background: colorForSubject(activeChapter.subjectName) }}
+                />
+                <span className="font-mono text-[10px] text-paper/60 uppercase tracking-wider truncate">
+                  {activeChapter.subjectName}
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedId(null)}
+                className="text-paper/40 hover:text-paper rounded-md p-0.5 transition"
+                aria-label="Close details"
+              >
+                <X size={13} />
+              </button>
+            </div>
 
-      <div className="mt-3 flex flex-wrap justify-center gap-3">
-        {subjects.map((s) => (
-          <span key={s} className="flex items-center gap-1.5 text-[11px] text-paper/50">
-            <span className="h-2 w-2 rounded-full" style={{ background: colorForSubject(s) }} />
-            {s}
-          </span>
-        ))}
+            <p className="font-display text-sm font-semibold text-paper leading-snug line-clamp-2">
+              {activeChapter.name}
+            </p>
+
+            <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2 text-[11px]">
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-medium text-amber">
+                  {activeChapter.confidence}% confidence
+                </span>
+                <span className="text-white/20">•</span>
+                <span className={activeChapter.unresolvedMistakes > 0 ? 'text-rust font-medium' : 'text-emerald-400'}>
+                  {activeChapter.unresolvedMistakes > 0
+                    ? `${activeChapter.unresolvedMistakes} mistake${activeChapter.unresolvedMistakes > 1 ? 's' : ''}`
+                    : 'Clean'}
+                </span>
+              </div>
+
+              <Link
+                href={`/journey/${activeChapter.id}`}
+                className="flex items-center gap-1 rounded-lg bg-amber/15 px-2 py-0.5 font-medium text-amber hover:bg-amber/25 transition text-[11px]"
+              >
+                <span>Open</span>
+                <ArrowRight size={11} />
+              </Link>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Dynamic Colored Subject Legend */}
+      <div className="mt-3 flex flex-wrap justify-center gap-2 px-1">
+        {subjects.map((s) => {
+          const color = colorForSubject(s);
+          return (
+            <span
+              key={s}
+              className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2.5 py-1 text-[11px] text-paper/70 font-medium"
+            >
+              <span className="h-2 w-2 rounded-full shrink-0 shadow-sm" style={{ background: color }} />
+              <span className="truncate max-w-[140px]">{s}</span>
+            </span>
+          );
+        })}
       </div>
-      <p className="mt-1 text-center text-[11px] text-paper/30">
-        Closer to center = lower confidence · bigger dot = more open mistakes
+
+      <p className="mt-2 text-center text-[10px] text-paper/40">
+        Closer to center = lower confidence · bigger dot = open mistakes · tap any dot to inspect
       </p>
     </div>
   );
