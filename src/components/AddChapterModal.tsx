@@ -60,7 +60,7 @@ export function AddChapterModal({
     setSaving(true);
     try {
       if (userId) {
-        await createCustomChapter(userId, currentSub.subject_id, name.trim(), track, status);
+        await createCustomChapter(userId, currentSub.subject_id, name.trim(), track, status, currentSub.subject_name);
       } else {
         addCustomChapter({
           name: name.trim(),

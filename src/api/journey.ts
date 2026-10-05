@@ -8,13 +8,15 @@ import {
   addCustomSubject,
   addCustomChapter,
   getCustomSubjects,
+  getCustomChapters,
+  ALL_STANDARD_SUBJECTS,
   deleteSubject as deleteLocalSubject,
   deleteChapter as deleteLocalChapter,
   getHiddenSubjects,
   getHiddenChapters,
   computeConfidence,
 } from '@/lib/curriculumData';
-import { syncHiddenCurriculum } from '@/lib/syncService';
+import { syncHiddenCurriculum, ensureSubjectInCloud, ensureChapterInCloud } from '@/lib/syncService';
 
 /** One query. All aggregation (chapter counts, mastered counts, avg confidence) already done in Postgres. */
 export async function getSubjectProgress(track?: string, userId?: string | null): Promise<SubjectProgressRow[]> {
@@ -38,17 +40,35 @@ export async function getSubjectProgress(track?: string, userId?: string | null)
   const customSubs = getCustomSubjects().filter(
     (cs) => !hiddenSubs.includes(cs.id) && !hiddenSubNames.has(cs.name.toLowerCase())
   );
+  const allCustomChapters = getCustomChapters();
+
   for (const cs of customSubs) {
-    if (!filtered.some((s) => s.subject_id === cs.id || s.subject_name.toLowerCase() === cs.name.toLowerCase())) {
+    const existing = filtered.find(
+      (s) => s.subject_id === cs.id || s.subject_name.toLowerCase() === cs.name.toLowerCase()
+    );
+    const subChaps = allCustomChapters.filter((c) => c.subjectId === cs.id);
+    const mastered = subChaps.filter((c) => c.status === 'mastered').length;
+    const revDue = subChaps.filter((c) => c.status === 'revision_due').length;
+    const avgConf =
+      subChaps.length > 0
+        ? Math.round(subChaps.reduce((acc, c) => acc + c.confidence, 0) / subChaps.length)
+        : 50;
+
+    if (!existing) {
       filtered.push({
         subject_id: cs.id,
         subject_name: cs.name,
         track: cs.track,
-        total_chapters: 0,
-        mastered_count: 0,
-        revision_due_count: 0,
-        avg_confidence: 50,
+        total_chapters: subChaps.length,
+        mastered_count: mastered,
+        revision_due_count: revDue,
+        avg_confidence: avgConf,
       });
+    } else if (existing.total_chapters === 0 && subChaps.length > 0) {
+      existing.total_chapters = subChaps.length;
+      existing.mastered_count = mastered;
+      existing.revision_due_count = revDue;
+      existing.avg_confidence = avgConf;
     }
   }
 
@@ -176,27 +196,13 @@ export async function createCustomSubject(userId: string, name: string, track: T
   // 1. Save locally for instant UI response
   const local = addCustomSubject(trimmed, track);
 
-  // 2. Cloud insert
+  // 2. Cloud insert / ensure
   if (userId) {
     try {
-      const { data, error } = await supabase
-        .from('subject')
-        .insert({
-          name: trimmed,
-          track: track === 'all' ? 'jee_nsep' : track,
-          user_id: userId,
-        } as never)
-        .select()
-        .single();
-
-      if (!error && data) {
-        return data as { id: string; name: string; track: TrackType };
-      }
-      if (error) {
-        console.warn('Supabase custom subject insert error:', error);
-      }
+      const ensuredId = await ensureSubjectInCloud(userId, local.id, trimmed, track);
+      return { id: ensuredId, name: trimmed, track };
     } catch (err) {
-      console.warn('Supabase subject insert failed, keeping local:', err);
+      console.warn('createCustomSubject cloud ensure failed, keeping local:', err);
     }
   }
 
@@ -210,18 +216,29 @@ export async function createCustomChapter(
   userId: string,
   subjectId: string,
   name: string,
-  track: TrackType = 'jee_nsep',
-  status: ChapterStatus = 'not_started'
+  track: TrackType = 'college_cs_aiml',
+  status: ChapterStatus = 'not_started',
+  subjectName?: string
 ) {
   const trimmed = name.trim();
+
+  // Resolve true subject name if missing or generic
+  let resolvedSubName = subjectName;
+  if (!resolvedSubName || resolvedSubName === 'Custom Subject' || resolvedSubName === 'Custom Chapter') {
+    const customSubs = getCustomSubjects();
+    const found = customSubs.find((s) => s.id === subjectId) || ALL_STANDARD_SUBJECTS.find((s) => s.id === subjectId);
+    if (found) resolvedSubName = found.name;
+  }
+  if (!resolvedSubName) resolvedSubName = 'Custom Subject';
+
   const validSubjectId = resolveSubjectId(subjectId);
   const confidence = computeConfidence(status, 0);
 
-  // 1. Save locally
+  // 1. Save locally with the REAL subjectName!
   const local = addCustomChapter({
     name: trimmed,
     subjectId: validSubjectId,
-    subjectName: 'Custom Subject',
+    subjectName: resolvedSubName,
     track,
     status,
     confidence,
@@ -230,33 +247,18 @@ export async function createCustomChapter(
   // 2. Cloud insert
   if (userId) {
     try {
-      const { data, error } = await supabase
-        .from('chapter')
-        .insert({
-          name: trimmed,
-          subject_id: validSubjectId,
-          user_id: userId,
-        } as never)
-        .select()
-        .single();
-
-      if (!error && data) {
-        const newChapId = (data as any).id;
-        // Also insert initial progress
-        await upsertChapterProgress(userId, newChapId, { status, confidence_score: confidence });
-        return {
-          id: newChapId,
-          name: trimmed,
-          subjectId: validSubjectId,
-          status,
-          confidence,
-        };
-      }
-      if (error) {
-        console.warn('Supabase custom chapter insert error:', error);
-      }
+      const ensuredChapId = await ensureChapterInCloud(userId, local.id);
+      await upsertChapterProgress(userId, ensuredChapId, { status, confidence_score: confidence });
+      return {
+        id: ensuredChapId,
+        name: trimmed,
+        subjectId: validSubjectId,
+        subjectName: resolvedSubName,
+        status,
+        confidence,
+      };
     } catch (err) {
-      console.warn('Supabase chapter insert failed, keeping local:', err);
+      console.warn('createCustomChapter cloud push failed, keeping local:', err);
     }
   }
 

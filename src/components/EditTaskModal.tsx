@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { updateTask, deleteTask, type TaskWithChapter } from '@/api/tasks';
 import type { ChapterOverview } from '@/api/chapters';
@@ -37,6 +37,16 @@ export function EditTaskModal({ task, chapters, onClose, onSaved }: Props) {
     setEffortLevel(task.effort_level);
     setEstimatedMinutes(task.estimated_minutes ? String(task.estimated_minutes) : '');
   }, [task]);
+
+  const groupedChapters = useMemo(() => {
+    const map = new Map<string, ChapterOverview[]>();
+    for (const c of chapters) {
+      const sub = c.subjectName || 'Other';
+      if (!map.has(sub)) map.set(sub, []);
+      map.get(sub)!.push(c);
+    }
+    return map;
+  }, [chapters]);
 
   async function handleDelete() {
     if (!task) return;
@@ -103,10 +113,15 @@ export function EditTaskModal({ task, chapters, onClose, onSaved }: Props) {
                 value={chapterId}
                 onChange={(e) => setChapterId(e.target.value)}
               >
-                {chapters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.subjectName} · {c.name}
-                  </option>
+                {chapters.length === 0 && <option value="">No chapters available</option>}
+                {Array.from(groupedChapters.entries()).map(([subName, chaps]) => (
+                  <optgroup key={subName} label={subName}>
+                    {chaps.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <div className="grid grid-cols-2 gap-3">

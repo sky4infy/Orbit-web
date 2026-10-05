@@ -11,10 +11,166 @@ import {
   resolveSubjectId,
   isStarterTask,
   STARTER_TASK_TITLES,
+  ALL_STANDARD_SUBJECTS,
+  ALL_STANDARD_CHAPTERS,
+  updateCustomSubjectId,
+  updateCustomChapterId,
 } from '@/lib/curriculumData';
 import { generateUuid, isUuid } from '@/lib/uuid';
+import type { TrackType } from '@/types/database.types';
 
 let isSyncing = false;
+
+/**
+ * Ensures that a subject exists in Supabase.
+ * If it's a standard subject, it's already seeded in the cloud.
+ * If it's a custom subject, verifies by ID or name, inserts if missing,
+ * and keeps local storage IDs aligned with the cloud ID.
+ */
+export async function ensureSubjectInCloud(
+  userId: string,
+  subjectId: string,
+  subjectName?: string,
+  track: TrackType = 'college_cs_aiml'
+): Promise<string> {
+  if (!userId) return subjectId;
+
+  const standard = ALL_STANDARD_SUBJECTS.find((s) => s.id === subjectId);
+  if (standard) return standard.id;
+
+  const resolvedName =
+    subjectName && subjectName !== 'Custom Subject' && subjectName !== 'Custom Chapter'
+      ? subjectName
+      : getCustomSubjects().find((s) => s.id === subjectId)?.name || 'Custom Subject';
+
+  try {
+    // 1. Check if subject exists in Supabase by ID or Name
+    const { data: cloudSubRaw } = await supabase
+      .from('subject')
+      .select('id, name')
+      .or(`id.eq.${subjectId},and(user_id.eq.${userId},name.ilike.${resolvedName})`)
+      .maybeSingle();
+
+    const cloudSub = cloudSubRaw as any;
+    if (cloudSub) {
+      if (cloudSub.id !== subjectId) {
+        updateCustomSubjectId(subjectId, cloudSub.id);
+      }
+      return cloudSub.id;
+    }
+
+    // 2. Insert new subject with subjectId so local & cloud share the exact same UUID
+    const newId = isUuid(subjectId) ? subjectId : generateUuid();
+    const { data: inserted, error } = await supabase
+      .from('subject')
+      .insert({
+        id: newId,
+        user_id: userId,
+        name: resolvedName,
+        track: track === 'all' ? 'jee_nsep' : track,
+      } as never)
+      .select('id')
+      .single();
+
+    if (!error && inserted) {
+      if (newId !== subjectId) {
+        updateCustomSubjectId(subjectId, (inserted as any).id);
+      }
+      return (inserted as any).id;
+    }
+
+    // If conflict on name, fetch existing
+    const { data: existingRaw } = await supabase
+      .from('subject')
+      .select('id')
+      .ilike('name', resolvedName)
+      .maybeSingle();
+    const existing = existingRaw as any;
+    if (existing) {
+      updateCustomSubjectId(subjectId, existing.id);
+      return existing.id;
+    }
+  } catch (err) {
+    console.warn('ensureSubjectInCloud exception:', err);
+  }
+
+  return subjectId;
+}
+
+/**
+ * Ensures that a chapter and its parent subject exist in Supabase.
+ * Inserts the chapter into Supabase if missing so foreign key constraints on task.chapter_id never fail.
+ */
+export async function ensureChapterInCloud(
+  userId: string,
+  chapterId: string
+): Promise<string> {
+  if (!userId) return chapterId;
+
+  const standard = ALL_STANDARD_CHAPTERS.find((c) => c.id === chapterId);
+  if (standard) return standard.id;
+
+  const localChaps = getCustomChapters();
+  const foundChap = localChaps.find((c) => c.id === chapterId);
+  if (!foundChap) return chapterId;
+
+  try {
+    // 1. Ensure parent subject exists in Supabase
+    const cloudSubjectId = await ensureSubjectInCloud(
+      userId,
+      foundChap.subjectId,
+      foundChap.subjectName,
+      foundChap.track
+    );
+
+    // 2. Check if chapter already exists in Supabase
+    const { data: cloudChapRaw } = await supabase
+      .from('chapter')
+      .select('id, name')
+      .or(`id.eq.${chapterId},and(user_id.eq.${userId},subject_id.eq.${cloudSubjectId},name.ilike.${foundChap.name})`)
+      .maybeSingle();
+
+    const cloudChap = cloudChapRaw as any;
+    if (cloudChap) {
+      if (cloudChap.id !== chapterId) {
+        updateCustomChapterId(chapterId, cloudChap.id);
+      }
+      return cloudChap.id;
+    }
+
+    // 3. Insert chapter into Supabase with chapterId
+    const newId = isUuid(chapterId) ? chapterId : generateUuid();
+    const { data: inserted, error } = await supabase
+      .from('chapter')
+      .insert({
+        id: newId,
+        user_id: userId,
+        subject_id: cloudSubjectId,
+        name: foundChap.name,
+      } as never)
+      .select('id')
+      .single();
+
+    if (!error && inserted) {
+      // Upsert initial progress
+      await supabase.from('user_chapter_progress').upsert({
+        user_id: userId,
+        chapter_id: newId,
+        status: foundChap.status || 'not_started',
+        confidence_score: foundChap.confidence || 50,
+      } as never, { onConflict: 'user_id,chapter_id' });
+
+      if (newId !== chapterId) {
+        updateCustomChapterId(chapterId, newId);
+      }
+      return newId;
+    }
+  } catch (err) {
+    console.warn('ensureChapterInCloud exception:', err);
+  }
+
+  return chapterId;
+}
 
 /**
  * Bi-directional sync for custom subjects between local storage and Supabase.
@@ -36,11 +192,19 @@ export async function syncCustomSubjectsToCloud(userId: string) {
     }
 
     const cloudList = (cloudSubjects as any[]) ?? [];
-    const cloudNames = new Set(cloudList.map((s) => (s.name ?? '').toLowerCase()));
 
-    // 2. Push any new local subjects up to cloud
+    // 2. Push any new local subjects up to cloud or align IDs
     for (const sub of localSubjects) {
-      if (!cloudNames.has(sub.name.toLowerCase())) {
+      const matchInCloud = cloudList.find(
+        (cs) => cs.id === sub.id || (cs.name ?? '').toLowerCase() === sub.name.toLowerCase()
+      );
+
+      if (matchInCloud) {
+        if (matchInCloud.id !== sub.id) {
+          updateCustomSubjectId(sub.id, matchInCloud.id);
+          sub.id = matchInCloud.id;
+        }
+      } else {
         const newId = isUuid(sub.id) ? sub.id : generateUuid();
         const { error: insertError } = await supabase.from('subject').insert({
           id: newId,
@@ -61,7 +225,7 @@ export async function syncCustomSubjectsToCloud(userId: string) {
         localSubjects.push({
           id: cs.id,
           name: cs.name,
-          track: cs.track || 'jee_nsep',
+          track: cs.track || 'college_cs_aiml',
         });
       }
     }
@@ -83,6 +247,9 @@ export async function syncCustomChaptersToCloud(userId: string) {
   if (localChapters.length === 0) return;
 
   try {
+    // 1. Ensure subjects exist in cloud first
+    await syncCustomSubjectsToCloud(userId);
+
     const { data: cloudChapters, error } = await supabase
       .from('chapter')
       .select('id, name, subject_id')
@@ -91,13 +258,33 @@ export async function syncCustomChaptersToCloud(userId: string) {
     if (error) return;
 
     const cloudList = (cloudChapters as any[]) ?? [];
-    const cloudNames = new Set(cloudList.map((c) => (c.name ?? '').toLowerCase()));
+    const localSubjects = getCustomSubjects();
+    const subMap = new Map<string, string>();
+    for (const s of [...ALL_STANDARD_SUBJECTS, ...localSubjects]) {
+      subMap.set(s.id, s.name);
+    }
 
     for (const chap of localChapters) {
-      if (!cloudNames.has(chap.name.toLowerCase())) {
-        const newId = isUuid(chap.id) ? chap.id : generateUuid();
-        const validSubjectId = resolveSubjectId(chap.subjectId);
+      const validSubjectId = await ensureSubjectInCloud(
+        userId,
+        chap.subjectId,
+        chap.subjectName,
+        chap.track
+      );
 
+      const matchInCloud = cloudList.find(
+        (cc) =>
+          cc.id === chap.id ||
+          (cc.subject_id === validSubjectId && (cc.name ?? '').toLowerCase() === chap.name.toLowerCase())
+      );
+
+      if (matchInCloud) {
+        if (matchInCloud.id !== chap.id) {
+          updateCustomChapterId(chap.id, matchInCloud.id);
+          chap.id = matchInCloud.id;
+        }
+      } else {
+        const newId = isUuid(chap.id) ? chap.id : generateUuid();
         const { error: insertError } = await supabase.from('chapter').insert({
           id: newId,
           user_id: userId,
@@ -120,14 +307,16 @@ export async function syncCustomChaptersToCloud(userId: string) {
       }
     }
 
+    // Pull down any cloud chapters not in local chapters
     for (const cc of cloudList) {
       if (!localChapters.some((lc) => lc.id === cc.id)) {
+        const realSubName = subMap.get(cc.subject_id) || 'Custom Subject';
         localChapters.push({
           id: cc.id,
           name: cc.name,
           subjectId: cc.subject_id,
-          subjectName: 'Custom Chapter',
-          track: 'jee_nsep',
+          subjectName: realSubName,
+          track: 'college_cs_aiml',
           status: 'not_started',
           confidence: 50,
           unresolvedMistakes: 0,
@@ -262,6 +451,9 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
         const isLegacyId = !isUuid(t.id);
         const realId = isLegacyId ? generateUuid() : t.id;
         const realChapId = resolveChapterId(t.chapter_id);
+
+        // Ensure chapter exists in cloud before upserting task to avoid foreign key failure
+        await ensureChapterInCloud(userId, realChapId);
 
         // Push real custom task to cloud
         const { error } = await supabase.from('task').upsert({

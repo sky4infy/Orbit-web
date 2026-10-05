@@ -166,8 +166,8 @@ export const LEGACY_SUBJECT_MAP: Record<string, string> = {
   'sub-cs-core': 'cc120ad1-f1b4-4857-9e08-41451018f2a7',
 };
 
-const ALL_STANDARD_CHAPTERS = [...JEE_CHAPTERS, ...CS_CHAPTERS];
-const ALL_STANDARD_SUBJECTS = [...JEE_SUBJECTS, ...CS_SUBJECTS];
+export const ALL_STANDARD_CHAPTERS = [...JEE_CHAPTERS, ...CS_CHAPTERS];
+export const ALL_STANDARD_SUBJECTS = [...JEE_SUBJECTS, ...CS_SUBJECTS];
 
 /**
  * Resolves any chapter ID (legacy mock string, name, or real UUID) to a valid Supabase UUID.
@@ -177,12 +177,18 @@ export function resolveChapterId(idOrName?: string | null): string {
   if (LEGACY_CHAPTER_MAP[idOrName]) return LEGACY_CHAPTER_MAP[idOrName];
   if (isUuid(idOrName)) return idOrName;
 
-  // Search by exact or fuzzy name
+  // Search by exact or fuzzy name in standard chapters
   const trimmed = idOrName.trim().toLowerCase();
   const found = ALL_STANDARD_CHAPTERS.find(
     (c) => c.name.toLowerCase() === trimmed || c.name.toLowerCase().includes(trimmed)
   );
   if (found) return found.id;
+
+  // Search by exact or fuzzy name in custom chapters
+  const customFound = getCustomChapters().find(
+    (c) => c.name.toLowerCase() === trimmed || c.name.toLowerCase().includes(trimmed)
+  );
+  if (customFound) return customFound.id;
 
   // Default to Units, Dimensions & Error Analysis
   return 'ef4adc05-e61b-4d6f-aa28-15271dcb0b03';
@@ -201,6 +207,11 @@ export function resolveSubjectId(idOrName?: string | null): string {
     (s) => s.name.toLowerCase() === trimmed || s.name.toLowerCase().includes(trimmed)
   );
   if (found) return found.id;
+
+  const customFound = getCustomSubjects().find(
+    (s) => s.name.toLowerCase() === trimmed || s.name.toLowerCase().includes(trimmed)
+  );
+  if (customFound) return customFound.id;
 
   // Default to Physics
   return '4232da6e-2d8b-40e6-83a4-9740a55febeb';
@@ -308,9 +319,22 @@ export function getCustomSubjects(): { id: string; name: string; track: TrackTyp
   }
 }
 
-export function addCustomSubject(name: string, track: TrackType) {
+export function addCustomSubject(name: string, track: TrackType, customId?: string) {
   const list = getCustomSubjects();
-  const newSub = { id: generateUuid(), name: name.trim(), track };
+  const id = customId && isUuid(customId) ? customId : generateUuid();
+  const existing = list.find((s) => s.id === id || s.name.toLowerCase() === name.trim().toLowerCase());
+  if (existing) {
+    if (existing.id !== id && customId) {
+      const oldId = existing.id;
+      existing.id = id;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(list));
+      }
+      updateCustomSubjectId(oldId, id);
+    }
+    return existing;
+  }
+  const newSub = { id, name: name.trim(), track };
   list.push(newSub);
   if (typeof window !== 'undefined') {
     localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(list));
@@ -318,17 +342,102 @@ export function addCustomSubject(name: string, track: TrackType) {
   return newSub;
 }
 
+export function updateCustomSubjectId(oldId: string, newId: string) {
+  if (typeof window === 'undefined' || !oldId || !newId || oldId === newId) return;
+  try {
+    const subs = getCustomSubjects();
+    let subModified = false;
+    for (const s of subs) {
+      if (s.id === oldId) {
+        s.id = newId;
+        subModified = true;
+      }
+    }
+    if (subModified) {
+      localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(subs));
+    }
+
+    const chaps = getCustomChapters();
+    let chapsModified = false;
+    for (const c of chaps) {
+      if (c.subjectId === oldId) {
+        c.subjectId = newId;
+        chapsModified = true;
+      }
+    }
+    if (chapsModified) {
+      localStorage.setItem(CUSTOM_CHAPTERS_KEY, JSON.stringify(chaps));
+    }
+  } catch (err) {
+    console.warn('updateCustomSubjectId error:', err);
+  }
+}
+
+export function updateCustomChapterId(oldId: string, newId: string) {
+  if (typeof window === 'undefined' || !oldId || !newId || oldId === newId) return;
+  try {
+    const chaps = getCustomChapters();
+    let chapsModified = false;
+    for (const c of chaps) {
+      if (c.id === oldId) {
+        c.id = newId;
+        chapsModified = true;
+      }
+    }
+    if (chapsModified) {
+      localStorage.setItem(CUSTOM_CHAPTERS_KEY, JSON.stringify(chaps));
+    }
+
+    const overrides = getChapterOverrides();
+    if (overrides[oldId]) {
+      overrides[newId] = overrides[oldId];
+      delete overrides[oldId];
+      localStorage.setItem(CHAPTER_OVERRIDES_KEY, JSON.stringify(overrides));
+    }
+  } catch (err) {
+    console.warn('updateCustomChapterId error:', err);
+  }
+}
+
 export function getCustomChapters(): CurriculumChapter[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(CUSTOM_CHAPTERS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const list: CurriculumChapter[] = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+
+    // Auto-repair: If chapters have generic 'Custom Subject' or 'Custom Chapter' name,
+    // match their subjectId with known custom or standard subjects to set their REAL subject name!
+    const customSubs = getCustomSubjects();
+    const subMap = new Map<string, string>();
+    for (const s of [...ALL_STANDARD_SUBJECTS, ...customSubs]) {
+      subMap.set(s.id, s.name);
+    }
+
+    let modified = false;
+    for (const c of list) {
+      if (!c.subjectName || c.subjectName === 'Custom Subject' || c.subjectName === 'Custom Chapter') {
+        const realSubName = subMap.get(c.subjectId);
+        if (realSubName) {
+          c.subjectName = realSubName;
+          modified = true;
+        }
+      }
+    }
+
+    if (modified) {
+      localStorage.setItem(CUSTOM_CHAPTERS_KEY, JSON.stringify(list));
+    }
+
+    return list;
   } catch {
     return [];
   }
 }
 
 export function addCustomChapter(data: {
+  id?: string;
   name: string;
   subjectId: string;
   subjectName: string;
@@ -338,21 +447,41 @@ export function addCustomChapter(data: {
 }): CurriculumChapter {
   const list = getCustomChapters();
   const initialStatus = data.status ?? 'not_started';
-  const newChap: CurriculumChapter = {
-    id: generateUuid(),
+  const chapId = data.id && isUuid(data.id) ? data.id : generateUuid();
+
+  // Resolve true subject name if missing or generic
+  let subName = data.subjectName;
+  if (!subName || subName === 'Custom Subject' || subName === 'Custom Chapter') {
+    const customSubs = getCustomSubjects();
+    const foundSub = customSubs.find((s) => s.id === data.subjectId) || ALL_STANDARD_SUBJECTS.find((s) => s.id === data.subjectId);
+    if (foundSub) subName = foundSub.name;
+  }
+
+  const chapEntry: CurriculumChapter = {
+    id: chapId,
     name: data.name.trim(),
     subjectId: resolveSubjectId(data.subjectId),
-    subjectName: data.subjectName,
+    subjectName: subName || 'Custom Subject',
     track: data.track,
     status: initialStatus,
     confidence: computeConfidence(initialStatus, 0),
     unresolvedMistakes: 0,
   };
-  list.push(newChap);
+
+  const existingIndex = list.findIndex(
+    (c) => c.id === chapId || (c.subjectId === data.subjectId && c.name.toLowerCase() === data.name.trim().toLowerCase())
+  );
+
+  if (existingIndex >= 0) {
+    list[existingIndex] = { ...list[existingIndex], ...chapEntry };
+  } else {
+    list.push(chapEntry);
+  }
+
   if (typeof window !== 'undefined') {
     localStorage.setItem(CUSTOM_CHAPTERS_KEY, JSON.stringify(list));
   }
-  return newChap;
+  return chapEntry;
 }
 
 export function getChapterOverrides(): Record<string, { status?: ChapterStatus; confidence?: number }> {
