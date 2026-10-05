@@ -562,7 +562,7 @@ export default function PlannerPage() {
         <>
           {/* Desk Hero: Day Orbit Completion Ring + Streak Pill */}
           <div className="mb-6 flex flex-col items-center justify-center">
-            <OrbitDayRing slots={slotStats} />
+            <OrbitDayRing tasks={tasks} slots={slotStats} />
 
             {/* Integrated Streak & XP Pill */}
             <div className="mt-3 flex items-center gap-3 rounded-full border border-white/5 bg-ink-100/70 px-4 py-1.5 backdrop-blur-md">
