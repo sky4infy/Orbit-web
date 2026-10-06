@@ -207,6 +207,11 @@ export default function WeekPage() {
     const unsubscribe = subscribeDataChanged((source) => {
       if (source !== 'local-optimistic' && isMounted) {
         load(userId, track);
+        if (openDay) {
+          getTasksForDate(userId, openDay).then((tasks) => {
+            if (isMounted) setDayTasks((prev) => ({ ...prev, [openDay]: tasks }));
+          }).catch(() => {});
+        }
       }
     });
 
@@ -216,7 +221,7 @@ export default function WeekPage() {
       document.removeEventListener('visibilitychange', handleFocusOrVisibility);
       unsubscribe();
     };
-  }, [userId, load, track]);
+  }, [userId, load, track, openDay]);
 
   const refresh = useCallback(() => {
     if (userId) load(userId, track);
@@ -228,7 +233,7 @@ export default function WeekPage() {
       return;
     }
     setOpenDay(date);
-    if (!dayTasks[date] && userId) {
+    if (userId) {
       setLoadingDay(date);
       try {
         const tasks = await withTimeout(getTasksForDate(userId, date), 6000);

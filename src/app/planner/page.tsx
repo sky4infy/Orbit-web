@@ -781,6 +781,10 @@ export default function PlannerPage() {
         chapters={chapters}
         onClose={() => setEditingTask(null)}
         onSaved={refresh}
+        onDeleted={(deletedId) => {
+          setTasks((prev) => prev.filter((t) => t.id !== deletedId));
+          refresh();
+        }}
       />
 
       {/* Mandatory Skip Reason Modal (<10s quick-pick) */}

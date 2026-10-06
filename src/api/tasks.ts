@@ -406,10 +406,18 @@ export async function revertTaskToPending(taskId: string, originalDate: string) 
 }
 
 export async function deleteTask(taskId: string) {
+  // 1. Immediately delete from local IndexedDB
   await deleteLocalTask(taskId);
-  Promise.resolve(
-    supabase.from('task').delete().eq('id', taskId)
-  ).catch(() => {});
+
+  // 2. Await cloud deletion so Supabase removes the record before any re-fetch
+  try {
+    const { error } = await supabase.from('task').delete().eq('id', taskId);
+    if (error) console.error('Cloud deleteTask error:', error);
+  } catch (err) {
+    console.warn('Cloud deleteTask exception:', err);
+  }
+
+  // 3. Notify all tabs that the task was deleted
   notifyDataChanged('task-deleted');
 }
 

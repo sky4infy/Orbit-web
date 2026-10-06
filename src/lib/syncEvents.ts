@@ -25,24 +25,26 @@ if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
 export function notifyDataChanged(source: string = 'local') {
   if (typeof window === 'undefined') return;
 
-  // 1. Dispatch custom event for current tab components
+  const now = Date.now();
+
+  // 1. Dispatch custom event for current window
   window.dispatchEvent(
     new CustomEvent(SYNC_EVENT_NAME, {
-      detail: { source, timestamp: Date.now() },
+      detail: { source, timestamp: now },
     })
   );
 
   // 2. Broadcast across tabs on the same machine
   if (broadcastChannel) {
     try {
-      broadcastChannel.postMessage({ source, timestamp: Date.now() });
-    } catch {}
-  } else {
-    // Fallback: ping localStorage to trigger 'storage' event in other tabs
-    try {
-      localStorage.setItem('orbit_tab_ping', Date.now().toString());
+      broadcastChannel.postMessage({ source, timestamp: now });
     } catch {}
   }
+
+  // 3. Always update localStorage so all tabs, multi-process windows, and WebViews trigger storage event
+  try {
+    localStorage.setItem('orbit_tab_ping', `${source}:${now}`);
+  } catch {}
 }
 
 /**
@@ -52,35 +54,42 @@ export function notifyDataChanged(source: string = 'local') {
 export function subscribeDataChanged(callback: (source?: string) => void): () => void {
   if (typeof window === 'undefined') return () => {};
 
+  let lastEventTime = 0;
+  const safeCallback = (src: string) => {
+    const now = Date.now();
+    if (now - lastEventTime < 30) return; // Deduplicate dual broadcast & storage notifications
+    lastEventTime = now;
+    callback(src);
+  };
+
   const handleCustomEvent = (e: Event) => {
     const custom = e as CustomEvent;
-    callback(custom.detail?.source || 'unknown');
+    safeCallback(custom.detail?.source || 'unknown');
   };
 
   const handleBroadcastMessage = (e: MessageEvent) => {
-    callback(e.data?.source || 'cross-tab');
+    safeCallback(e.data?.source || 'cross-tab');
   };
 
   const handleStorageEvent = (e: StorageEvent) => {
     if (e.key === 'orbit_tab_ping' || e.key === 'orbit_last_synced_at') {
-      callback('storage-ping');
+      const src = e.newValue?.split(':')[0] || 'storage-ping';
+      safeCallback(src);
     }
   };
 
   window.addEventListener(SYNC_EVENT_NAME, handleCustomEvent);
+  window.addEventListener('storage', handleStorageEvent);
 
   if (broadcastChannel) {
     broadcastChannel.addEventListener('message', handleBroadcastMessage);
-  } else {
-    window.addEventListener('storage', handleStorageEvent);
   }
 
   return () => {
     window.removeEventListener(SYNC_EVENT_NAME, handleCustomEvent);
+    window.removeEventListener('storage', handleStorageEvent);
     if (broadcastChannel) {
       broadcastChannel.removeEventListener('message', handleBroadcastMessage);
-    } else {
-      window.removeEventListener('storage', handleStorageEvent);
     }
   };
 }

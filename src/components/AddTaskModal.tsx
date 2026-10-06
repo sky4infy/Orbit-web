@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { createTask } from '@/api/tasks';
 import type { ChapterOverview } from '@/api/chapters';
 import type { EffortLevel, TimeSlot } from '@/types/database.types';
+import { getSubjectTheme } from '@/lib/subjectColors';
+import { Check, ChevronDown, BookOpen } from 'lucide-react';
 
 interface Props {
   userId: string;
@@ -27,6 +29,7 @@ export function AddTaskModal({ userId, date, chapters, open, onClose, onCreated 
   const [estimatedMinutes, setEstimatedMinutes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chapterPickerOpen, setChapterPickerOpen] = useState(false);
 
   // Group chapters by subject name
   const { subjectNames, chaptersBySubject } = useMemo(() => {
@@ -41,6 +44,11 @@ export function AddTaskModal({ userId, date, chapters, open, onClose, onCreated 
       chaptersBySubject: map,
     };
   }, [chapters]);
+
+  // Selected chapter object
+  const currentChapter = useMemo(() => {
+    return chapters.find((c) => c.id === chapterId);
+  }, [chapters, chapterId]);
 
   // Filtered chapters based on selected subject
   const filteredChapters = useMemo(() => {
@@ -64,6 +72,7 @@ export function AddTaskModal({ userId, date, chapters, open, onClose, onCreated 
   useEffect(() => {
     if (open) {
       setError(null);
+      setChapterPickerOpen(false);
       if (!chapterId && chapters.length > 0) {
         setChapterId(chapters[0].id);
       }
@@ -104,6 +113,8 @@ export function AddTaskModal({ userId, date, chapters, open, onClose, onCreated 
     }
   }
 
+  const selectedTheme = currentChapter ? getSubjectTheme(currentChapter.subjectName) : null;
+
   return (
     <AnimatePresence>
       {open && (
@@ -115,7 +126,7 @@ export function AddTaskModal({ userId, date, chapters, open, onClose, onCreated 
           onClick={onClose}
         >
           <motion.div
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-ink-100 p-5 shadow-2xl sm:rounded-2xl"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-ink-100 p-5 shadow-2xl sm:rounded-2xl max-h-[90vh] overflow-y-auto"
             initial={{ y: 30, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 20, opacity: 0 }}
@@ -123,7 +134,7 @@ export function AddTaskModal({ userId, date, chapters, open, onClose, onCreated 
           >
             <h2 className="mb-4 font-display text-lg font-semibold text-paper">Add a task</h2>
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-paper/40 mb-1.5 block">
                   Task Title
@@ -137,59 +148,167 @@ export function AddTaskModal({ userId, date, chapters, open, onClose, onCreated 
                 />
               </div>
 
-              {/* Subject Selector */}
+              {/* Subject Filter Pills */}
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-paper/40 mb-1.5 block">
-                  Subject
+                  Subject Category
                 </label>
-                <select
-                  className="w-full rounded-xl border border-white/10 bg-ink px-3 py-2.5 text-sm text-paper outline-none focus:border-amber/50"
-                  value={selectedSubject}
-                  onChange={(e) => {
-                    const newSub = e.target.value;
-                    setSelectedSubject(newSub);
-                    const targetChaps = newSub === 'all' ? chapters : (chaptersBySubject.get(newSub) ?? []);
-                    if (targetChaps.length > 0) {
-                      setChapterId(targetChaps[0].id);
-                    }
-                  }}
-                >
-                  <option value="all">All Subjects ({chapters.length} chapters)</option>
-                  {subjectNames.map((name) => (
-                    <option key={name} value={name}>
-                      {name} ({(chaptersBySubject.get(name) ?? []).length})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSubject('all');
+                      setChapterPickerOpen(false);
+                    }}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition active:scale-95 ${
+                      selectedSubject === 'all'
+                        ? 'bg-amber text-ink shadow-sm'
+                        : 'border border-white/10 bg-white/5 text-paper/60 hover:text-paper'
+                    }`}
+                  >
+                    All Subjects
+                  </button>
+                  {subjectNames.map((name) => {
+                    const theme = getSubjectTheme(name);
+                    const isSelected = selectedSubject === name;
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSubject(name);
+                          setChapterPickerOpen(false);
+                        }}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition active:scale-95 ${
+                          isSelected
+                            ? `${theme.badge} ring-1 ring-current shadow-sm`
+                            : 'border-white/5 bg-ink/60 text-paper/60 hover:border-white/20 hover:text-paper'
+                        }`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${theme.dot}`} />
+                        <span>{name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Chapter Selector */}
+              {/* Custom Chapter Picker */}
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-paper/40 mb-1.5 block">
                   Chapter / Unit
                 </label>
-                <select
-                  className="w-full rounded-xl border border-white/10 bg-ink px-3 py-2.5 text-sm text-paper outline-none focus:border-amber/50"
-                  value={chapterId}
-                  onChange={(e) => setChapterId(e.target.value)}
+                
+                {/* Trigger Button */}
+                <button
+                  type="button"
+                  onClick={() => setChapterPickerOpen((prev) => !prev)}
+                  className={`w-full flex items-center justify-between rounded-xl border px-3.5 py-2.5 text-left text-sm transition ${
+                    chapterPickerOpen
+                      ? 'border-amber/50 bg-ink-50'
+                      : 'border-white/10 bg-ink hover:border-white/20'
+                  }`}
                 >
-                  {filteredChapters.length === 0 && <option value="">No chapters in this subject</option>}
-                  {selectedSubject === 'all'
-                    ? Array.from(chaptersBySubject.entries()).map(([subName, chaps]) => (
-                        <optgroup key={subName} label={subName}>
-                          {chaps.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))
-                    : filteredChapters.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                </select>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {selectedTheme && (
+                      <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${selectedTheme.badge}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${selectedTheme.dot}`} />
+                        {currentChapter?.subjectName}
+                      </span>
+                    )}
+                    <span className="text-paper truncate font-medium">
+                      {currentChapter?.name || 'Select a chapter...'}
+                    </span>
+                  </div>
+                  <ChevronDown
+                    size={16}
+                    className={`text-paper/40 shrink-0 ml-2 transition-transform ${
+                      chapterPickerOpen ? 'rotate-180 text-amber' : ''
+                    }`}
+                  />
+                </button>
+
+                {/* Custom Expandable List with Colored Subject Headers */}
+                <AnimatePresence>
+                  {chapterPickerOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-ink p-1.5 shadow-xl"
+                    >
+                      {selectedSubject === 'all' ? (
+                        Array.from(chaptersBySubject.entries()).map(([subName, chaps]) => {
+                          const theme = getSubjectTheme(subName);
+                          return (
+                            <div key={subName} className="mb-2 last:mb-0">
+                              {/* Colored Subject Header Banner */}
+                              <div
+                                className={`sticky top-0 z-10 flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-bold uppercase tracking-wider backdrop-blur-md ${theme.badge} mb-1`}
+                              >
+                                <span className={`h-2 w-2 rounded-full ${theme.dot}`} />
+                                <span className="truncate">{subName}</span>
+                                <span className="ml-auto font-mono text-[10px] opacity-80">
+                                  {chaps.length} units
+                                </span>
+                              </div>
+
+                              {/* Chapter items */}
+                              <div className="flex flex-col gap-0.5 pl-1">
+                                {chaps.map((c) => {
+                                  const isSelected = c.id === chapterId;
+                                  return (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setChapterId(c.id);
+                                        setChapterPickerOpen(false);
+                                      }}
+                                      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                                        isSelected
+                                          ? 'bg-amber/15 text-amber font-semibold ring-1 ring-amber/30'
+                                          : 'text-paper/70 hover:bg-white/5 hover:text-paper'
+                                      }`}
+                                    >
+                                      <span className="truncate pr-2">{c.name}</span>
+                                      {isSelected && <Check size={14} className="text-amber shrink-0" />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          {filteredChapters.map((c) => {
+                            const isSelected = c.id === chapterId;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setChapterId(c.id);
+                                  setChapterPickerOpen(false);
+                                }}
+                                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                                  isSelected
+                                    ? 'bg-amber/15 text-amber font-semibold ring-1 ring-amber/30'
+                                    : 'text-paper/70 hover:bg-white/5 hover:text-paper'
+                                }`}
+                              >
+                                <span className="truncate pr-2">{c.name}</span>
+                                {isSelected && <Check size={14} className="text-amber shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
