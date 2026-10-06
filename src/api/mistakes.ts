@@ -11,6 +11,7 @@ import {
   deleteLocalMistake,
   type LocalMistake,
 } from '@/lib/db';
+import { notifyDataChanged } from '@/lib/syncEvents';
 
 export interface MistakeRow {
   id: string;
@@ -48,22 +49,19 @@ export async function logMistake(mistake: {
   await addLocalMistake(localM);
 
   // 2. Automatically enroll chapter in Spaced Repetition queue
-  ensureRevisionExists(mistake.user_id, validChapterId).catch(() => {});
+  await ensureRevisionExists(mistake.user_id, validChapterId).catch(() => {});
 
-  // 3. Background cloud sync
+  // 3. Cloud sync (await so other tabs fetch consistent data)
   if (mistake.user_id) {
-    (async () => {
-      try {
-        const { error } = await supabase
-          .from('mistake')
-          .insert({ ...mistake, id: newId, chapter_id: validChapterId, resolved: false } as never)
-          .select()
-          .single();
-        if (error) console.error('Supabase mistake insert error:', error);
-      } catch (err) {
-        console.error('Supabase mistake exception:', err);
-      }
-    })();
+    try {
+      await supabase
+        .from('mistake')
+        .insert({ ...mistake, id: newId, chapter_id: validChapterId, resolved: false } as never)
+        .select()
+        .single();
+    } catch (err) {
+      console.warn('Supabase mistake exception:', err);
+    }
 
     logEvent(mistake.user_id, 'mistake_logged', {
       chapter_id: validChapterId,
@@ -72,6 +70,7 @@ export async function logMistake(mistake: {
     }).catch(() => {});
   }
 
+  notifyDataChanged('mistake-logged');
   return localM;
 }
 
@@ -132,20 +131,27 @@ export async function resolveMistake(mistakeId: string) {
   // Instant IndexedDB resolve
   await toggleLocalMistakeResolved(mistakeId, true);
 
-  // Background sync
-  Promise.resolve(
-    supabase
+  // Await cloud sync so other tabs don't fetch stale unresolved status
+  try {
+    await supabase
       .from('mistake')
       .update({ resolved: true } as never)
-      .eq('id', mistakeId)
-  ).catch(() => {});
+      .eq('id', mistakeId);
+  } catch (err) {
+    console.warn('Supabase resolveMistake exception:', err);
+  }
+
+  notifyDataChanged('mistake-resolved');
 }
 
 export async function deleteMistake(mistakeId: string) {
   await deleteLocalMistake(mistakeId);
-  Promise.resolve(
-    supabase.from('mistake').delete().eq('id', mistakeId)
-  ).catch(() => {});
+  try {
+    await supabase.from('mistake').delete().eq('id', mistakeId);
+  } catch (err) {
+    console.warn('Supabase deleteMistake error:', err);
+  }
+  notifyDataChanged('mistake-deleted');
 }
 
 export async function getMistakeCountsByChapter(userId: string) {

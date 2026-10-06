@@ -124,28 +124,22 @@ export async function createExam(
   // Instant local save
   await saveLocalExam(localExam);
 
-  // Background cloud push
+  // Cloud push (await so other tabs fetch consistent list)
   if (userId) {
-    (async () => {
-      try {
-        const { error } = await supabase
-          .from('exam')
-          .insert({ id: newId, user_id: userId, name, exam_type: examType, exam_date: examDate } as never)
-          .select()
-          .single();
-        if (error) {
-          console.error('Cloud exam insert error:', error);
-          return;
-        }
-        if (validChapterIds.length > 0) {
-          await supabase
-            .from('exam_chapter')
-            .insert(validChapterIds.map((chapter_id) => ({ exam_id: newId, chapter_id })) as never);
-        }
-      } catch (err) {
-        console.error('Cloud exam insert exception:', err);
+    try {
+      const { error } = await supabase
+        .from('exam')
+        .insert({ id: newId, user_id: userId, name, exam_type: examType, exam_date: examDate } as never)
+        .select()
+        .single();
+      if (!error && validChapterIds.length > 0) {
+        await supabase
+          .from('exam_chapter')
+          .insert(validChapterIds.map((chapter_id) => ({ exam_id: newId, chapter_id })) as never);
       }
-    })();
+    } catch (err) {
+      console.error('Cloud exam insert exception:', err);
+    }
   }
 
   notifyDataChanged('exam-created');
@@ -177,25 +171,20 @@ export async function updateExam(
   };
   await saveLocalExam(updatedLocal);
 
-  // 2. Push update to Supabase
+  // 2. Push update to Supabase (await so other tabs get updated details)
   if (userId && isUuid(examId)) {
-    (async () => {
-      try {
-        const { error } = await supabase
-          .from('exam')
-          .update({
-            name: updates.name.trim(),
-            exam_type: updates.examType,
-            exam_date: updates.examDate,
-          } as never)
-          .eq('id', examId)
-          .eq('user_id', userId);
+    try {
+      const { error } = await supabase
+        .from('exam')
+        .update({
+          name: updates.name.trim(),
+          exam_type: updates.examType,
+          exam_date: updates.examDate,
+        } as never)
+        .eq('id', examId)
+        .eq('user_id', userId);
 
-        if (error) {
-          console.error('Cloud exam update error:', error);
-          return;
-        }
-
+      if (!error) {
         // Re-link chapters
         await supabase.from('exam_chapter').delete().eq('exam_id', examId);
         if (validChapterIds.length > 0) {
@@ -203,10 +192,10 @@ export async function updateExam(
             .from('exam_chapter')
             .insert(validChapterIds.map((chapter_id) => ({ exam_id: examId, chapter_id })) as never);
         }
-      } catch (err) {
-        console.error('Cloud exam update exception:', err);
       }
-    })();
+    } catch (err) {
+      console.error('Cloud exam update exception:', err);
+    }
   }
   notifyDataChanged('exam-updated');
 }
@@ -216,10 +205,14 @@ export async function deleteExam(examId: string) {
   await deleteLocalExam(examId);
 
   if (isUuid(examId)) {
-    Promise.all([
-      supabase.from('exam_chapter').delete().eq('exam_id', examId),
-      supabase.from('exam').delete().eq('id', examId),
-    ]).catch(() => {});
+    try {
+      await Promise.all([
+        supabase.from('exam_chapter').delete().eq('exam_id', examId),
+        supabase.from('exam').delete().eq('id', examId),
+      ]);
+    } catch (err) {
+      console.warn('Cloud exam delete error:', err);
+    }
   }
   notifyDataChanged('exam-deleted');
 }

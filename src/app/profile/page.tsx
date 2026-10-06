@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/api/profile';
@@ -9,6 +9,7 @@ import { useRequireAuth } from '@/lib/useRequireAuth';
 import type { TrackType } from '@/types/database.types';
 import { Sparkles, Code2, Check, User, Users, Flame, Trophy, Shield, LogOut, Database, Download, Upload } from 'lucide-react';
 import { getOrbitStats, exportOrbitBackupJSON, importOrbitBackupJSON } from '@/lib/db';
+import { subscribeDataChanged, notifyDataChanged } from '@/lib/syncEvents';
 
 function withTimeout<T>(promise: Promise<T>, ms = 800): Promise<T> {
   return Promise.race([
@@ -81,27 +82,38 @@ export default function ProfilePage() {
     reader.readAsText(file);
   }
 
+  const loadProfileData = useCallback(async (uid: string) => {
+    try {
+      const [nameRes, streakRes, levelRes, statsRes] = await Promise.allSettled([
+        withTimeout(getDisplayName(uid), 1000),
+        withTimeout(getStreak(uid), 1000),
+        withTimeout(getLevelInfo(uid), 1000),
+        getOrbitStats(),
+      ]);
+      if (nameRes.status === 'fulfilled' && nameRes.value) setName(nameRes.value);
+      if (streakRes.status === 'fulfilled') setStreak(streakRes.value);
+      if (levelRes.status === 'fulfilled') setLevel(levelRes.value);
+      if (statsRes.status === 'fulfilled') setDbStats(statsRes.value);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (!userId) return;
 
     let isMounted = true;
-    Promise.allSettled([
-      withTimeout(getDisplayName(userId), 800),
-      withTimeout(getStreak(userId), 800),
-      withTimeout(getLevelInfo(userId), 800),
-    ]).then(([nameRes, streakRes, levelRes]) => {
-      if (!isMounted) return;
-      if (nameRes.status === 'fulfilled' && nameRes.value) setName(nameRes.value);
-      if (streakRes.status === 'fulfilled') setStreak(streakRes.value);
-      if (levelRes.status === 'fulfilled') setLevel(levelRes.value);
-    }).catch(() => {
-      // Keep eager values
+    loadProfileData(userId);
+
+    const unsubscribe = subscribeDataChanged(() => {
+      if (isMounted) {
+        loadProfileData(userId);
+      }
     });
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
-  }, [userId]);
+  }, [userId, loadProfileData]);
 
   function handlePartnerNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
@@ -206,6 +218,7 @@ export default function ProfilePage() {
                   try {
                     await supabase.auth.updateUser({ data: { track: 'college_cs_aiml' } });
                   } catch {}
+                  notifyDataChanged('track-changed');
                   window.location.href = '/journey';
                 }}
                 className="rounded-xl border border-amber/30 bg-amber/15 px-3 py-1.5 text-xs font-semibold text-amber transition hover:bg-amber/25 active:scale-95 shrink-0 ml-3"

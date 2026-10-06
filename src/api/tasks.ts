@@ -229,14 +229,12 @@ export async function updateTask(
     updates.chapter_id = resolveChapterId(updates.chapter_id);
   }
   await updateLocalTask(taskId, updates);
-  (async () => {
-    try {
-      const { error } = await supabase.from('task').update(updates as never).eq('id', taskId);
-      if (error) console.error('Cloud task update error:', error);
-    } catch (err) {
-      console.error('Cloud task update exception:', err);
-    }
-  })();
+  try {
+    const { error } = await supabase.from('task').update(updates as never).eq('id', taskId);
+    if (error) console.error('Cloud task update error:', error);
+  } catch (err) {
+    console.error('Cloud task update exception:', err);
+  }
   notifyDataChanged('task-updated');
 }
 
@@ -253,10 +251,10 @@ export async function closeTask(
   // Instant local update in IndexedDB
   await updateLocalTaskStatus(taskId, status, opts.incompleteReason);
 
-  // Background cloud sync
-  if (userId) {
-    Promise.resolve(
-      supabase
+  // Await cloud sync so other tabs see the completed / closed status immediately
+  if (userId && userId !== 'local-user') {
+    try {
+      await supabase
         .from('task')
         .update({
           status,
@@ -264,8 +262,10 @@ export async function closeTask(
           actual_minutes: opts.actualMinutes ?? null,
           completed_at: status === 'completed' ? new Date().toISOString() : null,
         } as never)
-        .eq('id', taskId)
-    ).catch(() => {});
+        .eq('id', taskId);
+    } catch (err) {
+      console.warn('Cloud task close error:', err);
+    }
 
     const eventMap: Record<string, 'task_completed' | 'task_skipped' | 'task_moved'> = {
       completed: 'task_completed',
@@ -273,12 +273,10 @@ export async function closeTask(
       moved: 'task_moved',
     };
     if (eventMap[status]) {
-      Promise.resolve(
-        logEvent(userId, eventMap[status], {
-          task_id: taskId,
-          reason: opts.incompleteReason,
-        })
-      ).catch(() => {});
+      logEvent(userId, eventMap[status], {
+        task_id: taskId,
+        reason: opts.incompleteReason,
+      }).catch(() => {});
     }
   }
 
@@ -311,12 +309,14 @@ export async function rescheduleTask(
   }
 
   if (userId && userId !== 'local-user') {
-    Promise.resolve(
-      supabase
+    try {
+      await supabase
         .from('task')
         .update(updates as never)
-        .eq('id', taskId)
-    ).catch(() => {});
+        .eq('id', taskId);
+    } catch (err) {
+      console.warn('Cloud rescheduleTask error:', err);
+    }
   }
   notifyDataChanged('task-rescheduled');
 }
@@ -391,8 +391,8 @@ export async function revertTaskToPending(taskId: string, originalDate: string) 
     scheduled_date: originalDate,
   });
 
-  Promise.resolve(
-    supabase
+  try {
+    await supabase
       .from('task')
       .update({
         status: 'pending',
@@ -400,8 +400,10 @@ export async function revertTaskToPending(taskId: string, originalDate: string) 
         completed_at: null,
         scheduled_date: originalDate,
       } as never)
-      .eq('id', taskId)
-  ).catch(() => {});
+      .eq('id', taskId);
+  } catch (err) {
+    console.warn('Cloud revertTaskToPending error:', err);
+  }
   notifyDataChanged('task-reverted');
 }
 
@@ -430,17 +432,19 @@ export async function reorderTasks(tasks: { id: string; time_slot: TimeSlot; pos
     });
   }
 
-  // Background push
-  Promise.all(
-    tasks.map((t) =>
-      Promise.resolve(
+  // Await cloud sync
+  try {
+    await Promise.all(
+      tasks.map((t) =>
         supabase
           .from('task')
           .update({ time_slot: t.time_slot, position: t.position } as never)
           .eq('id', t.id)
       )
-    )
-  ).catch(() => {});
+    );
+  } catch (err) {
+    console.warn('Cloud reorderTasks error:', err);
+  }
   notifyDataChanged('task-reordered');
 }
 

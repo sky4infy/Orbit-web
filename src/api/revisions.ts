@@ -5,6 +5,7 @@ import { calculateAdaptiveInterval, type ReviewGrade } from '@/lib/spacedRepetit
 import { getLocalRevisions, saveLocalRevision, type LocalRevision } from '@/lib/db';
 import { getCurriculumChapters, resolveChapterId } from '@/lib/curriculumData';
 import { generateUuid } from '@/lib/uuid';
+import { notifyDataChanged } from '@/lib/syncEvents';
 
 export interface DueRevisionRow {
   id: string;
@@ -194,28 +195,26 @@ export async function ensureRevisionExists(userId: string, chapterId: string) {
   // Instant local save
   await saveLocalRevision(newRevision);
 
-  // Background cloud sync
+  // Cloud sync
   if (userId) {
-    (async () => {
-      try {
-        const { error } = await supabase
-          .from('revision')
-          .insert({
-            id: newId,
-            user_id: userId,
-            chapter_id: validChapterId,
-            due_date: today,
-            interval_days: 1,
-          } as never)
-          .select('id')
-          .single();
-        if (error) console.error('Supabase revision insert error:', error);
-      } catch (err) {
-        console.error('Supabase revision insert exception:', err);
-      }
-    })();
+    try {
+      await supabase
+        .from('revision')
+        .insert({
+          id: newId,
+          user_id: userId,
+          chapter_id: validChapterId,
+          due_date: today,
+          interval_days: 1,
+        } as never)
+        .select('id')
+        .single();
+    } catch (err) {
+      console.warn('Supabase revision insert exception:', err);
+    }
   }
 
+  notifyDataChanged('revision-created');
   return newId;
 }
 
@@ -266,10 +265,10 @@ export async function completeRevision(
   // 3. Instant local update in IndexedDB
   await saveLocalRevision(updatedRevision);
 
-  // 4. Background cloud sync
+  // 4. Await cloud update so other tabs see the latest due_date immediately
   if (userId) {
-    Promise.resolve(
-      supabase
+    try {
+      await supabase
         .from('revision')
         .update({
           last_reviewed_at: updatedRevision.last_reviewed_at,
@@ -279,18 +278,19 @@ export async function completeRevision(
           success_count: updatedRevision.success_count,
           failure_count: updatedRevision.failure_count,
         } as never)
-        .eq('id', revisionId)
-    ).catch(() => {});
+        .eq('id', revisionId);
 
-    Promise.resolve(
-      logEvent(userId, 'revision_completed', {
+      await logEvent(userId, 'revision_completed', {
         revision_id: revisionId,
         was_successful: wasSuccessful,
         grade,
         next_interval: nextInterval,
-      })
-    ).catch(() => {});
+      });
+    } catch (err) {
+      console.warn('Supabase revision update exception:', err);
+    }
   }
 
+  notifyDataChanged('revision-completed');
   return updatedRevision;
 }

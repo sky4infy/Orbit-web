@@ -211,6 +211,8 @@ export default function WeekPage() {
           getTasksForDate(userId, openDay).then((tasks) => {
             if (isMounted) setDayTasks((prev) => ({ ...prev, [openDay]: tasks }));
           }).catch(() => {});
+        } else {
+          setDayTasks({});
         }
       }
     });

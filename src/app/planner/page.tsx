@@ -268,7 +268,6 @@ export default function PlannerPage() {
 
   async function markDone(task: TaskWithChapter) {
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'completed' } : t)));
-    notifyDataChanged('task-completed');
     if (!userId) return;
     try {
       await closeTask(userId, task.id, 'completed');
@@ -285,7 +284,6 @@ export default function PlannerPage() {
 
   async function handleUndoDone(task: TaskWithChapter) {
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'pending' } : t)));
-    notifyDataChanged('task-undone');
     try {
       await revertTaskToPending(task.id, date);
       await refreshGamification();
