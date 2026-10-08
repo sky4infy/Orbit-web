@@ -41,6 +41,8 @@ export interface TaskWithChapter {
   slot_drift?: string | null;
   started_at?: string | null;
   planner_source?: 'manual' | 'auto_calibrated';
+  created_at?: string;
+  completed_at?: string | null;
   chapter: { id: string; name: string; subject: { id: string; name: string } } | null;
 }
 
@@ -86,7 +88,10 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
   // 1. If user is authenticated, query Supabase cloud first
   if (userId && userId !== 'local-user') {
     try {
-      const { data, error } = await supabase
+      let data: any = null;
+      let error: any = null;
+
+      const fullRes = await supabase
         .from('task')
         .select(
           `id, title, scheduled_date, time_slot, effort_level, priority, position, status,
@@ -98,6 +103,26 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
         .eq('scheduled_date', date)
         .order('time_slot', { ascending: true })
         .order('position', { ascending: true });
+
+      if (fullRes.error) {
+        // Fallback to core columns if Supabase does not have telemetry columns
+        const coreRes = await supabase
+          .from('task')
+          .select(
+            `id, title, scheduled_date, time_slot, effort_level, priority, position, status,
+             incomplete_reason, estimated_minutes, actual_minutes, created_at, completed_at,
+             chapter:chapter_id ( id, name, subject:subject_id ( id, name ) )`
+          )
+          .eq('user_id', userId)
+          .eq('scheduled_date', date)
+          .order('time_slot', { ascending: true })
+          .order('position', { ascending: true });
+        data = coreRes.data;
+        error = coreRes.error;
+      } else {
+        data = fullRes.data;
+        error = fullRes.error;
+      }
 
       if (!error && data) {
         const rawList = (data as any[]) ?? [];
@@ -128,7 +153,7 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
             started_at: (d as any).started_at ?? null,
             planner_source: (d as any).planner_source ?? 'manual',
             created_at: (d as any).created_at || new Date().toISOString(),
-            completed_at: d.status === 'completed' ? ((d as any).completed_at || new Date().toISOString()) : null,
+            completed_at: d.completed_at || (d.status === 'completed' ? (d as any).created_at : null),
           });
         }
 
@@ -149,7 +174,7 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
               try {
                 const chapId = resolveChapterId((m as any).chapter_id || m.chapter?.id);
                 await ensureChapterInCloud(userId, chapId);
-                await supabase.from('task').upsert({
+                const { error: upsertErr } = await supabase.from('task').upsert({
                   id: m.id,
                   user_id: userId,
                   chapter_id: chapId,
@@ -163,7 +188,10 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
                   incomplete_reason: m.incomplete_reason,
                   estimated_minutes: m.estimated_minutes,
                   actual_minutes: m.actual_minutes,
+                  created_at: (m as any).created_at || new Date().toISOString(),
+                  completed_at: m.completed_at || null,
                 } as never, { onConflict: 'id' });
+                if (upsertErr) console.warn('Background sync missing local task error:', upsertErr);
               } catch (err) {
                 console.warn('Background sync missing local task failed:', err);
               }
@@ -236,7 +264,32 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'complet
         .select()
         .single();
 
-      if (error) console.error('Cloud task push error:', error);
+      if (error) {
+        // Fallback to core columns if cloud database does not have telemetry columns
+        const { error: fallbackError } = await supabase
+          .from('task')
+          .insert({
+            id: localTask.id,
+            user_id: localTask.user_id,
+            chapter_id: ensuredChapId,
+            title: localTask.title,
+            scheduled_date: localTask.scheduled_date,
+            time_slot: localTask.time_slot,
+            effort_level: localTask.effort_level,
+            priority: localTask.priority,
+            position: localTask.position,
+            status: localTask.status,
+            incomplete_reason: localTask.incomplete_reason,
+            estimated_minutes: localTask.estimated_minutes,
+            actual_minutes: localTask.actual_minutes,
+            created_at: localTask.created_at,
+            completed_at: localTask.completed_at,
+          } as never)
+          .select()
+          .single();
+
+        if (fallbackError) console.error('Cloud task push fallback error:', fallbackError);
+      }
     } catch (err) {
       console.error('Cloud task push exception:', err);
     }
@@ -344,10 +397,23 @@ export async function closeTask(
   // Await cloud sync so other tabs see the completed / closed status immediately
   if (userId && userId !== 'local-user') {
     try {
-      await supabase
+      const { error } = await supabase
         .from('task')
         .update(updates as never)
         .eq('id', taskId);
+
+      if (error) {
+        // Fallback without telemetry columns
+        await supabase
+          .from('task')
+          .update({
+            status,
+            incomplete_reason: status === 'completed' ? null : opts.incompleteReason ?? null,
+            actual_minutes: actualMin,
+            completed_at: status === 'completed' ? now.toISOString() : null,
+          } as never)
+          .eq('id', taskId);
+      }
     } catch (err) {
       console.warn('Cloud task close error:', err);
     }
@@ -421,10 +487,22 @@ export async function rescheduleTask(
 
   if (userId && userId !== 'local-user') {
     try {
-      await supabase
+      const { error } = await supabase
         .from('task')
         .update(updates as never)
         .eq('id', taskId);
+
+      if (error) {
+        await supabase
+          .from('task')
+          .update({
+            scheduled_date: newDate,
+            status: 'pending',
+            incomplete_reason: null,
+            ...(newSlot ? { time_slot: newSlot } : {}),
+          } as never)
+          .eq('id', taskId);
+      }
     } catch (err) {
       console.warn('Cloud rescheduleTask error:', err);
     }
@@ -588,10 +666,34 @@ export async function getWeekOverview(
 ): Promise<DayOverview[]> {
   try {
     const allTasks = await db.tasks.toArray();
-    const filtered = allTasks.filter((t) => t.scheduled_date >= startDate && t.scheduled_date <= endDate);
+    let cloudTasks: any[] = [];
+    if (userId && userId !== 'local-user') {
+      try {
+        const { data } = await supabase
+          .from('task')
+          .select('id, user_id, scheduled_date, status, actual_minutes, estimated_minutes')
+          .eq('user_id', userId)
+          .gte('scheduled_date', startDate)
+          .lte('scheduled_date', endDate);
+        if (data) cloudTasks = data;
+      } catch {}
+    }
+
+    const taskMap = new Map<string, any>();
+    for (const t of allTasks) {
+      if (t.scheduled_date >= startDate && t.scheduled_date <= endDate) {
+        taskMap.set(t.id, t);
+      }
+    }
+    for (const ct of cloudTasks) {
+      if (!taskMap.has(ct.id)) {
+        taskMap.set(ct.id, ct);
+      }
+    }
+
     const byDate: Record<string, DayOverview> = {};
 
-    filtered.forEach((t) => {
+    taskMap.forEach((t) => {
       if (!byDate[t.scheduled_date]) {
         byDate[t.scheduled_date] = {
           date: t.scheduled_date,
