@@ -320,6 +320,38 @@ export default function ProfilePage() {
         )}
       </section>
 
+      {/* Student Privacy & Data Protection (DPDP Act Compliance) */}
+      <section className="mb-6 rounded-3xl border border-white/10 bg-ink-50 p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber/15 text-amber">
+            <Shield size={15} />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-paper">Student Privacy & Data Protection</h2>
+            <p className="text-[11px] text-paper/40 font-medium">DPDP Act (India) Compliant • Privacy-First Architecture</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-paper/60 leading-relaxed mb-3">
+          Orbit records your task execution times, focus timer logs, and self-reported reflections solely to optimize your study schedule and discover your peak biological focus hours.
+        </p>
+
+        <div className="rounded-2xl border border-white/5 bg-ink/40 p-3.5 space-y-2 text-[11px] text-paper/60">
+          <div className="flex items-center gap-2 text-paper/80">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span><strong>Zero Surveillance:</strong> Orbit never captures screen, audio, typing, or location.</span>
+          </div>
+          <div className="flex items-center gap-2 text-paper/80">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span><strong>Data Ownership:</strong> You can export your full historical archive anytime using the button above.</span>
+          </div>
+          <div className="flex items-center gap-2 text-paper/80">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span><strong>Zero Third-Party Ads:</strong> Your study habits are never sold or shared with advertisers.</span>
+          </div>
+        </div>
+      </section>
+
       {/* Sign Out */}
       <button
         onClick={signOut}
