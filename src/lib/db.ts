@@ -14,6 +14,7 @@ import type {
   TestDifficulty,
   TestFumbleFactor,
   RelativeDifficulty,
+  SubjectDebriefEntry,
 } from '@/types/database.types';
 import { getCurriculumChapters, getStarterTasks, resolveChapterId, isStarterTask } from '@/lib/curriculumData';
 
@@ -113,12 +114,15 @@ export interface LocalTestAttempt {
   task_id?: string | null;
   exam_name: string;
   attempt_date: string;
+  is_multi_subject?: boolean;
   score?: number | null;
   max_score?: number | null;
   paper_difficulty: TestDifficulty;
   fumble_factor: TestFumbleFactor;
   relative_difficulty: RelativeDifficulty;
   leaked_chapter_ids: string[];
+  subject_breakdown?: SubjectDebriefEntry[];
+  student_notes?: string | null;
   notes?: string | null;
   created_at: string;
 }
