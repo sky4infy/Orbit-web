@@ -279,17 +279,23 @@ export async function completeRevision(
           failure_count: updatedRevision.failure_count,
         } as never)
         .eq('id', revisionId);
-
-      await logEvent(userId, 'revision_completed', {
-        revision_id: revisionId,
-        was_successful: wasSuccessful,
-        grade,
-        next_interval: nextInterval,
-      });
     } catch (err) {
       console.warn('Supabase revision update exception:', err);
     }
   }
+
+  // Universal Behavioral Telemetry: revision completed
+  logEvent(userId || 'local-user', 'revision_completed', {
+    revision_id: revisionId,
+    chapter_id: current.chapter_id,
+    was_successful: wasSuccessful,
+    grade,
+    previous_interval: current.interval_days,
+    next_interval: nextInterval,
+    review_count: updatedRevision.review_count,
+    due_date: current.due_date,
+    unresolved_mistake_count: unresolvedMistakeCount,
+  }).catch(() => {});
 
   notifyDataChanged('revision-completed');
   return updatedRevision;
