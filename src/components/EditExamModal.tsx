@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Trash2, Layers } from 'lucide-react';
 import { updateExam, getExamLinkedChapters, deleteExam } from '@/api/exams';
 import type { ChapterOverview } from '@/api/chapters';
 import type { ExamReadinessRow, ExamType } from '@/types/database.types';
-import { Trash2, X } from 'lucide-react';
 
 interface Props {
   userId: string;
@@ -32,22 +32,13 @@ const EXAM_TYPES: { value: ExamType; label: string }[] = [
 
 export function EditExamModal({ userId, exam, chapters, open, onClose, onUpdated, onDeleted }: Props) {
   const [name, setName] = useState('');
-  const [examType, setExamType] = useState<ExamType>('jee_main');
+  const [examType, setExamType] = useState<ExamType>('midsem');
   const [examDate, setExamDate] = useState('');
+  const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(new Set());
+  const [activeSubjectTab, setActiveSubjectTab] = useState<string>('');
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (exam && open) {
-      setName(exam.name);
-      setExamType(exam.exam_type);
-      setExamDate(exam.exam_date);
-      getExamLinkedChapters(exam.exam_id).then((chapIds) => {
-        setSelectedChapters(new Set(chapIds));
-      });
-    }
-  }, [exam, open]);
 
   const bySubject = useMemo(() => {
     const grouped: Record<string, ChapterOverview[]> = {};
@@ -58,10 +49,80 @@ export function EditExamModal({ userId, exam, chapters, open, onClose, onUpdated
     return grouped;
   }, [chapters]);
 
+  const availableSubjects = useMemo(() => {
+    return Object.keys(bySubject);
+  }, [bySubject]);
+
+  useEffect(() => {
+    if (exam && open) {
+      setName(exam.name);
+      setExamType(exam.exam_type);
+      setExamDate(exam.exam_date);
+      getExamLinkedChapters(exam.exam_id).then((chapIds) => {
+        setSelectedChapters(new Set(chapIds));
+
+        // Deduce subjects from linked chapters
+        const linkedSubs = new Set<string>();
+        for (const c of chapters) {
+          if (chapIds.includes(c.id)) {
+            linkedSubs.add(c.subjectName);
+          }
+        }
+        if (linkedSubs.size > 0) {
+          setSelectedSubjects(linkedSubs);
+          setActiveSubjectTab(Array.from(linkedSubs)[0]);
+        } else {
+          // If no linked chapters, default to first available subject
+          if (availableSubjects.length > 0) {
+            setSelectedSubjects(new Set([availableSubjects[0]]));
+            setActiveSubjectTab(availableSubjects[0]);
+          }
+        }
+      });
+    }
+  }, [exam, open, chapters, availableSubjects]);
+
+  function toggleSubject(sub: string) {
+    setSelectedSubjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(sub)) {
+        next.delete(sub);
+        const subChaps = bySubject[sub] || [];
+        const chapsToRemove = new Set(subChaps.map((c) => c.id));
+        setSelectedChapters((prevChaps) => {
+          const updated = new Set(prevChaps);
+          chapsToRemove.forEach((id) => updated.delete(id));
+          return updated;
+        });
+      } else {
+        next.add(sub);
+      }
+      return next;
+    });
+  }
+
   function toggleChapter(id: string) {
     setSelectedChapters((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllInSubject(sub: string) {
+    const subChaps = bySubject[sub] || [];
+    setSelectedChapters((prev) => {
+      const next = new Set(prev);
+      subChaps.forEach((c) => next.add(c.id));
+      return next;
+    });
+  }
+
+  function clearAllInSubject(sub: string) {
+    const subChaps = bySubject[sub] || [];
+    setSelectedChapters((prev) => {
+      const next = new Set(prev);
+      subChaps.forEach((c) => next.delete(c.id));
       return next;
     });
   }
@@ -85,7 +146,7 @@ export function EditExamModal({ userId, exam, chapters, open, onClose, onUpdated
       onUpdated();
       onClose();
     } catch (err: any) {
-      setError(err.message ?? 'Could not save modifications.');
+      setError(err.message ?? 'Could not update test.');
     } finally {
       setSaving(false);
     }
@@ -93,12 +154,14 @@ export function EditExamModal({ userId, exam, chapters, open, onClose, onUpdated
 
   async function handleDelete() {
     if (!exam) return;
+    const ok = window.confirm(`Remove "${exam.name}" from your upcoming tests?`);
+    if (!ok) return;
     try {
       await deleteExam(exam.exam_id);
       onDeleted?.(exam.exam_id);
       onClose();
-    } catch (err: any) {
-      setError(err.message ?? 'Could not remove test.');
+    } catch (err) {
+      console.error('Delete exam failed:', err);
     }
   }
 
@@ -106,39 +169,40 @@ export function EditExamModal({ userId, exam, chapters, open, onClose, onUpdated
     <AnimatePresence>
       {open && exam && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center p-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
         >
           <motion.div
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/10 bg-ink-100 p-6 shadow-2xl"
-            initial={{ y: 30, opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 20, opacity: 0, scale: 0.95 }}
+            className="max-h-[90vh] w-full max-w-lg flex flex-col rounded-3xl border border-white/10 bg-ink-100 shadow-2xl overflow-hidden"
+            initial={{ y: 30, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 20, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display text-lg font-semibold text-paper">Edit Test & Milestone</h2>
+            {/* Header */}
+            <div className="p-5 pb-3 border-b border-white/5 flex items-center justify-between">
+              <div>
+                <h2 className="font-display text-lg font-medium text-paper">Edit Test Details</h2>
+                <p className="text-[11px] text-paper/40">Adjust test name, subjects, or syllabus chapters</p>
+              </div>
               <button
+                type="button"
                 onClick={onClose}
-                className="rounded-full p-1.5 text-paper/40 transition hover:bg-white/10 hover:text-paper"
+                className="rounded-full p-1.5 text-paper/40 hover:bg-white/5 hover:text-paper transition"
               >
-                <X size={18} />
+                ✕
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* Scrollable Form Body */}
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
               <div>
-                <label className="mb-1 block text-xs font-semibold text-paper/50 uppercase tracking-wider">
-                  Test Name
-                </label>
+                <label className="text-xs text-paper/50">Test Name</label>
                 <input
-                  type="text"
-                  required
-                  className="w-full rounded-2xl border border-white/10 bg-ink px-4 py-3 text-sm text-paper outline-none focus:border-amber/50"
-                  placeholder="e.g. JEE Main Mock 1"
+                  className="mt-1 w-full rounded-2xl border border-white/10 bg-ink px-4 py-3 text-sm text-paper outline-none focus:border-amber"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
@@ -146,96 +210,187 @@ export function EditExamModal({ userId, exam, chapters, open, onClose, onUpdated
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-paper/50 uppercase tracking-wider">
-                    Category
-                  </label>
+                  <label className="text-xs text-paper/50">Category</label>
                   <select
-                    className="w-full rounded-2xl border border-white/10 bg-ink px-3 py-3 text-sm text-paper outline-none focus:border-amber/50"
+                    className="mt-1 w-full rounded-2xl border border-white/10 bg-ink px-3 py-2.5 text-xs text-paper outline-none focus:border-amber"
                     value={examType}
                     onChange={(e) => setExamType(e.target.value as ExamType)}
                   >
                     {EXAM_TYPES.map((t) => (
-                      <option key={t.value} value={t.value} className="bg-ink text-paper">
+                      <option key={t.value} value={t.value}>
                         {t.label}
                       </option>
                     ))}
                   </select>
                 </div>
-
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-paper/50 uppercase tracking-wider">
-                    Target Date
-                  </label>
+                  <label className="text-xs text-paper/50">Exam Date</label>
                   <input
                     type="date"
-                    required
-                    className="w-full rounded-2xl border border-white/10 bg-ink px-3 py-3 text-sm text-paper outline-none focus:border-amber/50"
+                    className="mt-1 w-full rounded-2xl border border-white/10 bg-ink px-3 py-2.5 text-xs text-paper outline-none focus:border-amber"
                     value={examDate}
                     onChange={(e) => setExamDate(e.target.value)}
                   />
                 </div>
               </div>
 
-              {chapters.length > 0 && (
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-paper/50">
-                      Linked Syllabus
-                    </label>
-                    <span className="font-mono text-xs text-amber font-medium">
-                      {selectedChapters.size} chapters linked
-                    </span>
-                  </div>
+              {/* Step 1: Subjects */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-paper/60 flex items-center gap-1.5">
+                    <Layers size={13} className="text-amber" />
+                    <span>Subjects in this Test</span>
+                  </label>
+                  <span className="text-[11px] text-paper/40">{selectedSubjects.size} selected</span>
+                </div>
 
-                  <div className="max-h-48 overflow-y-auto rounded-2xl border border-white/10 bg-ink p-2 scrollbar-thin">
-                    {Object.entries(bySubject).map(([subject, list]) => (
-                      <div key={subject} className="mb-2.5">
-                        <p className="px-2 py-1 text-[11px] font-semibold tracking-wider uppercase text-amber/80">
-                          {subject}
-                        </p>
-                        {list.map((c) => (
-                          <label
-                            key={c.id}
-                            className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 text-xs text-paper/80 hover:bg-white/5 cursor-pointer transition"
+                <div className="flex flex-wrap gap-1.5">
+                  {availableSubjects.map((sub) => {
+                    const isSel = selectedSubjects.has(sub);
+                    return (
+                      <button
+                        key={sub}
+                        type="button"
+                        onClick={() => toggleSubject(sub)}
+                        className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                          isSel
+                            ? 'bg-amber text-ink font-semibold shadow-sm'
+                            : 'border border-white/10 bg-ink text-paper/60 hover:text-paper hover:bg-white/5'
+                        }`}
+                      >
+                        {isSel ? '✓ ' : '+ '}
+                        {sub}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Step 2: Chapters in Selected Subjects */}
+              {selectedSubjects.size > 0 && (
+                <div className="rounded-2xl border border-white/10 bg-ink/60 p-3.5 space-y-3">
+                  {selectedSubjects.size > 1 && (
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-white/5">
+                      {Array.from(selectedSubjects).map((sub) => {
+                        const isTabActive = (activeSubjectTab || Array.from(selectedSubjects)[0]) === sub;
+                        const subChaps = bySubject[sub] || [];
+                        const countSelected = subChaps.filter((c) => selectedChapters.has(c.id)).length;
+                        return (
+                          <button
+                            key={sub}
+                            type="button"
+                            onClick={() => setActiveSubjectTab(sub)}
+                            className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                              isTabActive
+                                ? 'bg-amber text-ink'
+                                : 'bg-white/5 text-paper/60 hover:text-paper'
+                            }`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={selectedChapters.has(c.id)}
-                              onChange={() => toggleChapter(c.id)}
-                              className="accent-amber rounded h-4 w-4"
-                            />
-                            <span className="truncate">{c.name}</span>
-                          </label>
-                        ))}
+                            <span>{sub}</span>
+                            <span
+                              className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                                isTabActive ? 'bg-ink text-amber' : 'bg-white/10 text-paper/50'
+                              }`}
+                            >
+                              {countSelected}/{subChaps.length}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {(() => {
+                    const currentSub = activeSubjectTab || Array.from(selectedSubjects)[0];
+                    if (!currentSub) return null;
+                    const subChapters = bySubject[currentSub] || [];
+                    const countInSub = subChapters.filter((c) => selectedChapters.has(c.id)).length;
+
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-paper/80">
+                            Chapters for <span className="text-amber font-semibold">{currentSub}</span> ({countInSub}/{subChapters.length})
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => selectAllInSubject(currentSub)}
+                              className="text-[11px] text-amber hover:underline font-medium"
+                            >
+                              Select All
+                            </button>
+                            <span className="text-paper/20 text-xs">|</span>
+                            <button
+                              type="button"
+                              onClick={() => clearAllInSubject(currentSub)}
+                              className="text-[11px] text-paper/40 hover:text-paper"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                          {subChapters.map((c) => {
+                            const isChecked = selectedChapters.has(c.id);
+                            return (
+                              <label
+                                key={c.id}
+                                className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs cursor-pointer transition ${
+                                  isChecked
+                                    ? 'bg-amber/10 border border-amber/20 text-paper'
+                                    : 'border border-white/5 bg-white/[0.02] text-paper/70 hover:bg-white/5'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleChapter(c.id)}
+                                  className="accent-amber rounded h-4 w-4"
+                                />
+                                <span className="truncate">{c.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {selectedChapters.size > 0 && (
+                <div className="flex items-center justify-between px-1 text-xs text-paper/50">
+                  <span>Linked Syllabus:</span>
+                  <span className="font-mono text-amber font-semibold">
+                    {selectedChapters.size} chapters linked
+                  </span>
                 </div>
               )}
 
               {error && <p className="text-xs text-rust font-medium">{error}</p>}
 
-              <div className="mt-2 flex items-center gap-2.5">
+              <div className="pt-2 flex items-center gap-2 border-t border-white/5">
                 <button
                   type="button"
                   onClick={handleDelete}
-                  className="flex items-center justify-center gap-1.5 rounded-2xl border border-rust/30 bg-rust/10 px-4 py-3 text-xs font-semibold text-rust transition hover:bg-rust/20 active:scale-95"
-                  title="Remove this test"
+                  className="flex items-center justify-center gap-1.5 rounded-2xl border border-rust/30 bg-rust/10 px-3.5 py-3 text-xs font-semibold text-rust transition hover:bg-rust/20 active:scale-95"
                 >
-                  <Trash2 size={14} />
+                  <Trash2 size={13} />
                   <span>Remove</span>
                 </button>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 rounded-2xl border border-white/10 bg-white/5 py-3 text-xs font-semibold text-paper/60 transition hover:bg-white/10 hover:text-paper"
+                  className="flex-1 rounded-2xl border border-white/10 bg-white/5 py-3 text-xs font-semibold text-paper/60 hover:bg-white/10 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 rounded-2xl bg-amber py-3 text-xs font-semibold text-ink shadow-md shadow-amber/20 transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+                  className="flex-1 rounded-2xl bg-amber py-3 text-xs font-semibold text-ink shadow-md shadow-amber/20 hover:brightness-110 active:scale-95 transition disabled:opacity-50"
                 >
                   {saving ? 'Saving…' : 'Save Changes'}
                 </button>
