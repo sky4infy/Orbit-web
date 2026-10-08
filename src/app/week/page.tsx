@@ -109,7 +109,6 @@ export default function WeekPage() {
   const [addExamOpen, setAddExamOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExamReadinessRow | null>(null);
   const [debriefExam, setDebriefExam] = useState<ExamReadinessRow | null>(null);
-  const [quickDebriefOpen, setQuickDebriefOpen] = useState(false);
   const [planModalDate, setPlanModalDate] = useState<string | null>(null);
 
   // Read track preference once
@@ -281,20 +280,12 @@ export default function WeekPage() {
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setQuickDebriefOpen(true)}
-            className="rounded-xl border border-amber/30 bg-amber/10 px-3 py-2 text-xs font-semibold text-amber hover:bg-amber/20 active:scale-95 transition"
-          >
-            🎯 Debrief Test
-          </button>
-          <button
-            onClick={() => setAddExamOpen(true)}
-            className="rounded-xl bg-amber px-3.5 py-2 text-xs font-semibold text-ink shadow-md shadow-amber/20 hover:brightness-110 active:scale-95 transition"
-          >
-            + Add Test
-          </button>
-        </div>
+        <button
+          onClick={() => setAddExamOpen(true)}
+          className="rounded-xl bg-amber px-3.5 py-2 text-xs font-semibold text-ink shadow-md shadow-amber/20 hover:brightness-110 active:scale-95 transition"
+        >
+          + Add Test
+        </button>
       </header>
 
       {/* Upcoming Tests / Milestones Section */}
@@ -385,17 +376,6 @@ export default function WeekPage() {
           track={track}
           open={Boolean(debriefExam)}
           onClose={() => setDebriefExam(null)}
-          onDebriefCompleted={refresh}
-        />
-      )}
-
-      {/* Quick Standalone Test Debrief Modal */}
-      {quickDebriefOpen && (
-        <TestDebriefModal
-          userId={userId ?? 'local-user'}
-          track={track}
-          open={quickDebriefOpen}
-          onClose={() => setQuickDebriefOpen(false)}
           onDebriefCompleted={refresh}
         />
       )}
