@@ -546,8 +546,8 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
         // Ensure chapter exists in cloud before upserting task to avoid foreign key failure
         await ensureChapterInCloud(userId, realChapId);
 
-        // Push real custom task to cloud
-        const { error } = await supabase.from('task').upsert({
+        // Push real custom task to cloud with schema-resilient upsert
+        let { error } = await supabase.from('task').upsert({
           id: realId,
           user_id: userId,
           chapter_id: realChapId,
@@ -570,6 +570,27 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
           completed_at: t.completed_at,
         } as never, { onConflict: 'id' });
 
+        if (error) {
+          // Retry with standard core columns if telemetry columns do not exist in user's Supabase
+          const { error: retryError } = await supabase.from('task').upsert({
+            id: realId,
+            user_id: userId,
+            chapter_id: realChapId,
+            title: t.title,
+            scheduled_date: t.scheduled_date,
+            time_slot: t.time_slot,
+            effort_level: t.effort_level,
+            priority: t.priority,
+            position: t.position,
+            status: t.status,
+            incomplete_reason: t.incomplete_reason,
+            estimated_minutes: t.estimated_minutes,
+            actual_minutes: t.actual_minutes,
+            completed_at: t.completed_at,
+          } as never, { onConflict: 'id' });
+          if (!retryError) error = null;
+        }
+
         if (!error && isLegacyId) {
           await deleteLocalTask(t.id);
           await saveLocalTask({
@@ -583,22 +604,29 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
     }
 
     // Step 2: Pull cloud tasks into local Dexie (excluding any starter tasks)
-    const { data: cloudTasks, error: fetchError } = await supabase
+    let cloudTasks: any[] | null = null;
+    const fetchRes = await supabase
       .from('task')
       .select('*')
       .eq('user_id', userId);
 
-    if (!fetchError && cloudTasks) {
-      const taskList = (cloudTasks as any[]) ?? [];
-      const realTaskList = taskList.filter((ct) => !isStarterTask(ct.title));
-      const cloudTaskIds = new Set(realTaskList.map((ct) => ct.id));
-
-      // Purge any local tasks in Dexie that were deleted in cloud on another device
-      for (const lt of localTasks) {
-        if ((lt.user_id === userId || !lt.user_id) && !cloudTaskIds.has(lt.id) && !isStarterTask(lt.title)) {
-          await deleteLocalTask(lt.id);
-        }
+    if (!fetchRes.error && fetchRes.data) {
+      cloudTasks = fetchRes.data as any[];
+    } else {
+      // Fallback to core columns if select('*') encountered schema issues
+      const coreFetch = await supabase
+        .from('task')
+        .select('id, user_id, chapter_id, title, scheduled_date, time_slot, effort_level, priority, position, status, incomplete_reason, estimated_minutes, actual_minutes, created_at, completed_at')
+        .eq('user_id', userId);
+      if (!coreFetch.error && coreFetch.data) {
+        cloudTasks = coreFetch.data as any[];
       }
+    }
+
+    if (cloudTasks) {
+      const realTaskList = cloudTasks.filter((ct) => !isStarterTask(ct.title));
+
+      // Note: Never purge local Dexie tasks here. Local tasks remain safe and offline-first!
 
       for (const ct of realTaskList) {
         await saveLocalTask({
