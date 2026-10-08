@@ -102,15 +102,17 @@ export async function saveReflection(
           { onConflict: 'user_id,day' }
         )
     ).catch(() => {});
-
-    Promise.resolve(
-      logEvent(userId, 'reflection_submitted', {
-        day: reflection.day,
-        energy_rating: reflection.energy_rating,
-        sleep_hours: reflection.sleep_hours,
-      })
-    ).catch(() => {});
   }
+
+  // Universal Behavioral Telemetry: reflection submitted
+  logEvent(userId || 'local-user', 'reflection_submitted', {
+    day: reflection.day,
+    energy_rating: reflection.energy_rating,
+    sleep_hours: reflection.sleep_hours,
+    has_wins: Boolean(reflection.wins),
+    has_blockers: Boolean(reflection.blockers),
+    has_tomorrow_focus: Boolean(reflection.tomorrow_focus),
+  }).catch(() => {});
 
   return {
     id: refId,
