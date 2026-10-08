@@ -2,11 +2,12 @@
 
 import { differenceInCalendarDays } from 'date-fns';
 import type { ExamReadinessRow } from '@/types/database.types';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Sparkles } from 'lucide-react';
 
 interface Props {
   exam: ExamReadinessRow;
   onEdit?: (exam: ExamReadinessRow) => void;
+  onDebrief?: (exam: ExamReadinessRow) => void;
   onDelete: (examId: string) => void;
 }
 
@@ -23,7 +24,7 @@ const TYPE_LABEL: Record<string, string> = {
   other: 'Milestone',
 };
 
-export function ExamCard({ exam, onEdit, onDelete }: Props) {
+export function ExamCard({ exam, onEdit, onDebrief, onDelete }: Props) {
   const daysLeft = differenceInCalendarDays(new Date(exam.exam_date), new Date());
   const coverage = exam.total_chapters > 0 ? (exam.mastered_chapters / exam.total_chapters) * 100 : 0;
 
@@ -58,25 +59,37 @@ export function ExamCard({ exam, onEdit, onDelete }: Props) {
         <p className="mt-3 text-xs text-paper/30">No syllabus linked yet.</p>
       )}
 
-      <div className="mt-3.5 flex items-center gap-3 pt-1 border-t border-white/5">
-        {onEdit && (
+      <div className="mt-3.5 flex items-center justify-between gap-3 pt-2 border-t border-white/5">
+        {onDebrief ? (
           <button
-            onClick={() => onEdit(exam)}
-            className="flex items-center gap-1 text-xs text-paper/40 transition hover:text-amber"
-            title="Edit test details"
+            onClick={() => onDebrief(exam)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-amber/10 px-2.5 py-1 text-xs font-medium text-amber hover:bg-amber/20 transition"
           >
-            <Pencil size={12} />
-            <span>Edit</span>
+            <Sparkles size={12} />
+            <span>Debrief Attempt (20s)</span>
           </button>
-        )}
-        <button
-          onClick={() => onDelete(exam.exam_id)}
-          className="flex items-center gap-1 text-xs text-paper/30 transition hover:text-rust"
-          title="Remove test"
-        >
-          <Trash2 size={12} />
-          <span>Remove</span>
-        </button>
+        ) : <div />}
+
+        <div className="flex items-center gap-3">
+          {onEdit && (
+            <button
+              onClick={() => onEdit(exam)}
+              className="flex items-center gap-1 text-xs text-paper/40 transition hover:text-amber"
+              title="Edit test details"
+            >
+              <Pencil size={12} />
+              <span>Edit</span>
+            </button>
+          )}
+          <button
+            onClick={() => onDelete(exam.exam_id)}
+            className="flex items-center gap-1 text-xs text-paper/30 transition hover:text-rust"
+            title="Remove test"
+          >
+            <Trash2 size={12} />
+            <span>Remove</span>
+          </button>
+        </div>
       </div>
     </div>
   );
