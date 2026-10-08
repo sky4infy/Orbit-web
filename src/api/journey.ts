@@ -132,10 +132,10 @@ export async function getChapterDetail(userId: string, chapterId: string) {
       .limit(10),
   ]);
 
-  if (mistakesRes.error) throw mistakesRes.error;
-  if (revisionRes.error) throw revisionRes.error;
-  if (todayEventsRes.error) throw todayEventsRes.error;
-  if (recentTasksRes.error) throw recentTasksRes.error;
+  if (mistakesRes.error) console.warn('Could not load chapter mistakes:', mistakesRes.error);
+  if (revisionRes.error) console.warn('Could not load chapter revision:', revisionRes.error);
+  if (todayEventsRes.error) console.warn('Could not load chapter events:', todayEventsRes.error);
+  if (recentTasksRes.error) console.warn('Could not load chapter tasks:', recentTasksRes.error);
 
   return {
     status: statusRow,
