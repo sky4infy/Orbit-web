@@ -85,9 +85,9 @@ export default function ProfilePage() {
   const loadProfileData = useCallback(async (uid: string) => {
     try {
       const [nameRes, streakRes, levelRes, statsRes] = await Promise.allSettled([
-        withTimeout(getDisplayName(uid), 1000),
-        withTimeout(getStreak(uid), 1000),
-        withTimeout(getLevelInfo(uid), 1000),
+        withTimeout(getDisplayName(uid), 6000),
+        withTimeout(getStreak(uid), 6000),
+        withTimeout(getLevelInfo(uid), 6000),
         getOrbitStats(),
       ]);
       if (nameRes.status === 'fulfilled' && nameRes.value) setName(nameRes.value);
