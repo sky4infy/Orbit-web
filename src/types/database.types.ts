@@ -42,14 +42,39 @@ export interface ExamReadinessRow {
   mastered_chapters: number;
   avg_confidence: number;
 }
+export type TestDifficulty = 'easy' | 'moderate' | 'brutal';
+export type TestFumbleFactor = 'time_panic' | 'silly_slips' | 'concept_blindspot' | 'in_control';
+export type RelativeDifficulty = 'hard_for_all' | 'easy_for_others_i_fumbled' | 'balanced';
+
+export interface TestAttempt {
+  id: string;
+  user_id: string;
+  exam_id?: string | null;
+  task_id?: string | null;
+  exam_name: string;
+  attempt_date: string;
+  score?: number | null;
+  max_score?: number | null;
+  paper_difficulty: TestDifficulty;
+  fumble_factor: TestFumbleFactor;
+  relative_difficulty: RelativeDifficulty;
+  leaked_chapter_ids: string[];
+  notes?: string | null;
+  created_at: string;
+}
+
 export type EventType =
-  | 'task_created' | 'task_completed' | 'task_skipped' | 'task_moved'
-  | 'mistake_logged' | 'revision_completed' | 'reflection_submitted' | 'study_session_ended'
-  | 'chapter_status_updated';
+  | 'task_created' | 'task_started' | 'task_completed' | 'task_skipped' | 'task_moved' | 'task_rescheduled'
+  | 'mistake_logged' | 'mistake_resolved' | 'revision_completed' | 'reflection_submitted'
+  | 'study_session_started' | 'study_session_ended'
+  | 'chapter_status_updated' | 'exam_created' | 'plan_generated'
+  | 'test_attempt_logged';
 
 export interface Profile {
   id: string;
   display_name: string;
+  telemetry_consent?: boolean;
+  is_minor?: boolean;
   created_at: string;
 }
 
@@ -116,6 +141,12 @@ export interface Task {
   incomplete_reason: IncompleteReason | null;
   estimated_minutes: number | null;
   actual_minutes: number | null;
+  reschedule_count?: number;
+  created_slot?: TimeSlot | null;
+  completed_slot?: TimeSlot | null;
+  slot_drift?: string | null;
+  started_at?: string | null;
+  planner_source?: 'manual' | 'auto_calibrated';
   created_at: string;
   completed_at: string | null;
 }
