@@ -431,33 +431,49 @@ export function TestDebriefModal({
                   />
                 </div>
 
-                {/* Subject Inclusion Chips */}
-                <div>
-                  <div className="flex items-center justify-between">
+                {/* Subject Badges or Selector */}
+                {examLinkedChapterIds.length > 0 ? (
+                  <div>
                     <label className="text-xs text-paper/50">Subjects in this test</label>
-                    <span className="text-[10px] text-paper/30">Tap to toggle</span>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {allCurriculumSubjects.map((s) => {
-                      const isSel = selectedSubjects.includes(s.name);
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => toggleSubjectSelection(s.name)}
-                          className={`rounded-lg px-2.5 py-1 text-xs transition ${
-                            isSel
-                              ? 'bg-amber text-ink font-semibold shadow-sm'
-                              : 'border border-white/10 bg-white/5 text-paper/50 hover:text-paper'
-                          }`}
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {selectedSubjects.map((s) => (
+                        <span
+                          key={s}
+                          className="rounded-xl bg-amber/10 border border-amber/20 px-3 py-1 text-xs font-semibold text-amber"
                         >
-                          {isSel ? '✓ ' : '+ '}
-                          {s.name}
-                        </button>
-                      );
-                    })}
+                          {s}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-paper/50">Subjects in this test</label>
+                      <span className="text-[10px] text-paper/30">Tap to toggle</span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {allCurriculumSubjects.map((s) => {
+                        const isSel = selectedSubjects.includes(s.name);
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => toggleSubjectSelection(s.name)}
+                            className={`rounded-lg px-2.5 py-1 text-xs transition ${
+                              isSel
+                                ? 'bg-amber text-ink font-semibold shadow-sm'
+                                : 'border border-white/10 bg-white/5 text-paper/50 hover:text-paper'
+                            }`}
+                          >
+                            {isSel ? '✓ ' : '+ '}
+                            {s.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Overall Difficulty */}
                 <div>
@@ -740,32 +756,41 @@ export function TestDebriefModal({
                   />
                 </div>
 
-                {/* Subject Indicator / Switcher */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-paper/50">Subject</label>
-                    <span className="text-[10px] text-paper/30">Tap to change</span>
+                {/* Subject Indicator */}
+                {examLinkedChapterIds.length > 0 ? (
+                  <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-white/5 border border-white/5">
+                    <span className="text-xs text-paper/50">Subject:</span>
+                    <span className="text-xs font-semibold text-amber">
+                      {selectedSubjects[0] || 'Linked Subject'}
+                    </span>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {allCurriculumSubjects.map((s) => {
-                      const isSel = selectedSubjects[0] === s.name;
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => setSelectedSubjects([s.name])}
-                          className={`rounded-lg px-2.5 py-1 text-xs transition ${
-                            isSel
-                              ? 'bg-amber text-ink font-semibold'
-                              : 'border border-white/10 bg-white/5 text-paper/50 hover:text-paper'
-                          }`}
-                        >
-                          {s.name}
-                        </button>
-                      );
-                    })}
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-paper/50">Subject</label>
+                      <span className="text-[10px] text-paper/30">Tap to select</span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {allCurriculumSubjects.map((s) => {
+                        const isSel = selectedSubjects[0] === s.name;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setSelectedSubjects([s.name])}
+                            className={`rounded-lg px-2.5 py-1 text-xs transition ${
+                              isSel
+                                ? 'bg-amber text-ink font-semibold'
+                                : 'border border-white/10 bg-white/5 text-paper/50 hover:text-paper'
+                            }`}
+                          >
+                            {s.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Difficulty */}
                 <div>
