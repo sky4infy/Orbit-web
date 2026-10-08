@@ -11,6 +11,9 @@ import type {
   ChapterStatus,
   ExamType,
   TrackType,
+  TestDifficulty,
+  TestFumbleFactor,
+  RelativeDifficulty,
 } from '@/types/database.types';
 import { getCurriculumChapters, getStarterTasks, resolveChapterId, isStarterTask } from '@/lib/curriculumData';
 
@@ -28,6 +31,12 @@ export interface LocalTask {
   incomplete_reason: IncompleteReason | null;
   estimated_minutes: number | null;
   actual_minutes: number | null;
+  reschedule_count?: number;
+  created_slot?: TimeSlot | null;
+  completed_slot?: TimeSlot | null;
+  slot_drift?: string | null;
+  started_at?: string | null;
+  planner_source?: 'manual' | 'auto_calibrated';
   created_at: string;
   completed_at: string | null;
 }
@@ -93,6 +102,24 @@ export interface LocalEventLog {
   user_id: string;
   event_type: string;
   metadata: Record<string, any>;
+  sync_status?: 'synced' | 'pending';
+  created_at: string;
+}
+
+export interface LocalTestAttempt {
+  id: string;
+  user_id: string;
+  exam_id?: string | null;
+  task_id?: string | null;
+  exam_name: string;
+  attempt_date: string;
+  score?: number | null;
+  max_score?: number | null;
+  paper_difficulty: TestDifficulty;
+  fumble_factor: TestFumbleFactor;
+  relative_difficulty: RelativeDifficulty;
+  leaked_chapter_ids: string[];
+  notes?: string | null;
   created_at: string;
 }
 
@@ -104,6 +131,7 @@ export class OrbitLocalDatabase extends Dexie {
   progress!: Table<LocalChapterProgress, number>;
   reflections!: Table<LocalReflection, string>;
   events!: Table<LocalEventLog, string>;
+  test_attempts!: Table<LocalTestAttempt, string>;
 
   constructor() {
     super('OrbitStudyOS');
@@ -115,6 +143,12 @@ export class OrbitLocalDatabase extends Dexie {
       progress: '++id, [user_id+chapter_id], chapter_id, status',
       reflections: 'id, [user_id+day], user_id, day',
       events: 'id, user_id, event_type, created_at',
+    });
+    this.version(2).stores({
+      events: 'id, user_id, event_type, sync_status, created_at',
+    });
+    this.version(3).stores({
+      test_attempts: 'id, user_id, attempt_date, exam_id, paper_difficulty, fumble_factor',
     });
   }
 }
@@ -367,6 +401,57 @@ export async function saveLocalChapterProgress(progress: LocalChapterProgress) {
 }
 
 // ============================================================
+// LOCAL EVENT LOG METHODS (Zero-Loss Offline Telemetry)
+// ============================================================
+
+export async function saveLocalEvent(event: LocalEventLog) {
+  if (typeof window === 'undefined') return;
+  try {
+    await db.events.put({
+      ...event,
+      sync_status: event.sync_status || 'pending',
+    });
+  } catch (err) {
+    console.warn('Failed to save event to Dexie:', err);
+  }
+}
+
+export async function getLocalEvents(userId?: string): Promise<LocalEventLog[]> {
+  if (typeof window === 'undefined') return [];
+  try {
+    if (userId && userId !== 'local-user') {
+      return await db.events.where('user_id').equals(userId).reverse().sortBy('created_at');
+    }
+    return await db.events.orderBy('created_at').reverse().toArray();
+  } catch (err) {
+    console.warn('Failed to load local events:', err);
+    return [];
+  }
+}
+
+export async function getPendingLocalEvents(): Promise<LocalEventLog[]> {
+  if (typeof window === 'undefined') return [];
+  try {
+    return await db.events.filter((e) => e.sync_status === 'pending').toArray();
+  } catch {
+    return [];
+  }
+}
+
+export async function markLocalEventsSynced(ids: string[]): Promise<void> {
+  if (typeof window === 'undefined' || ids.length === 0) return;
+  try {
+    await db.transaction('rw', db.events, async () => {
+      for (const id of ids) {
+        await db.events.update(id, { sync_status: 'synced' });
+      }
+    });
+  } catch (err) {
+    console.warn('Failed marking events synced in Dexie:', err);
+  }
+}
+
+// ============================================================
 // BACKUP & RESTORE (1-Click JSON Snapshot)
 // ============================================================
 
@@ -488,5 +573,28 @@ export async function getOrbitStats() {
     return { tasks, mistakes, exams };
   } catch {
     return { tasks: 0, mistakes: 0, exams: 0 };
+  }
+}
+
+export async function saveLocalTestAttempt(attempt: LocalTestAttempt) {
+  if (typeof window === 'undefined') return;
+  try {
+    await db.test_attempts.put(attempt);
+  } catch (err) {
+    console.warn('Dexie save test attempt failed:', err);
+  }
+}
+
+export async function getLocalTestAttempts(userId: string): Promise<LocalTestAttempt[]> {
+  if (typeof window === 'undefined') return [];
+  try {
+    return await db.test_attempts
+      .where('user_id')
+      .equals(userId)
+      .reverse()
+      .sortBy('attempt_date');
+  } catch (err) {
+    console.warn('Dexie get test attempts failed:', err);
+    return [];
   }
 }
