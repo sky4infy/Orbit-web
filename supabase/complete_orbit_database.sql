@@ -71,6 +71,12 @@ create table if not exists public.task (
   )),
   estimated_minutes int default 45,
   actual_minutes int,
+  reschedule_count int not null default 0,
+  created_slot text check (created_slot in ('morning', 'afternoon', 'evening', 'night') or created_slot is null),
+  completed_slot text check (completed_slot in ('morning', 'afternoon', 'evening', 'night') or completed_slot is null),
+  slot_drift text,
+  started_at timestamptz,
+  planner_source text default 'manual',
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
@@ -137,9 +143,9 @@ create table if not exists public.event_log (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null references auth.users(id) on delete cascade,
   event_type text not null check (event_type in (
-    'task_created', 'task_completed', 'task_skipped', 'task_moved',
+    'task_created', 'task_completed', 'task_skipped', 'task_moved', 'task_rescheduled',
     'mistake_logged', 'revision_completed', 'reflection_submitted',
-    'study_session_ended', 'chapter_status_updated'
+    'study_session_started', 'study_session_ended', 'chapter_status_updated', 'exam_created'
   )),
   metadata jsonb not null default '{}',
   created_at timestamptz not null default now()
@@ -477,3 +483,13 @@ cross join (values
 ) as c(name)
 where s.name = 'Core Computer Science'
 on conflict (subject_id, name) do nothing;
+
+-- ============================================================
+-- 7. IDEMPOTENT UPGRADE MIGRATIONS (For existing databases)
+-- ============================================================
+alter table public.task add column if not exists reschedule_count int not null default 0;
+alter table public.task add column if not exists created_slot text check (created_slot in ('morning', 'afternoon', 'evening', 'night') or created_slot is null);
+alter table public.task add column if not exists completed_slot text check (completed_slot in ('morning', 'afternoon', 'evening', 'night') or completed_slot is null);
+alter table public.task add column if not exists slot_drift text;
+alter table public.task add column if not exists started_at timestamptz;
+alter table public.task add column if not exists planner_source text default 'manual';
