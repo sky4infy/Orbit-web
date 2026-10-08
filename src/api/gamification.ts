@@ -18,8 +18,9 @@ export async function getStreak(userId?: string, lookbackDays = 60): Promise<num
     if (typeof window !== 'undefined' && db?.tasks) {
       const localCompleted = await db.tasks.where('status').equals('completed').toArray();
       for (const t of localCompleted) {
-        if (t.scheduled_date && t.scheduled_date >= since) {
-          daysWithCompletion.add(t.scheduled_date);
+        const completionDay = t.completed_at ? format(new Date(t.completed_at), 'yyyy-MM-dd') : t.scheduled_date;
+        if (completionDay && completionDay >= since) {
+          daysWithCompletion.add(completionDay);
         }
       }
     }
@@ -32,15 +33,15 @@ export async function getStreak(userId?: string, lookbackDays = 60): Promise<num
     try {
       const { data, error } = await supabase
         .from('task')
-        .select('scheduled_date, status')
+        .select('scheduled_date, completed_at, status')
         .eq('user_id', userId)
-        .eq('status', 'completed')
-        .gte('scheduled_date', since);
+        .eq('status', 'completed');
 
       if (!error && data) {
-        const rows = data as unknown as { scheduled_date: string; status: string }[];
+        const rows = data as unknown as { scheduled_date: string; completed_at: string | null; status: string }[];
         for (const r of rows) {
-          if (r.scheduled_date) daysWithCompletion.add(r.scheduled_date);
+          const cDay = r.completed_at ? format(new Date(r.completed_at), 'yyyy-MM-dd') : r.scheduled_date;
+          if (cDay && cDay >= since) daysWithCompletion.add(cDay);
         }
       }
     } catch (err) {
