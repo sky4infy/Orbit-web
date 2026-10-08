@@ -1,21 +1,33 @@
 import { supabase } from '@/lib/supabase/client';
 import { logEvent } from '@/api/events';
 import type { StudySession } from '@/types/database.types';
+import { getCurrentTimeSlot } from '@/lib/telemetry';
 
 export async function startStudySession(userId: string, taskId: string | null) {
+  const now = new Date();
   const { data, error } = await supabase
     .from('study_session')
-    .insert({ user_id: userId, task_id: taskId, start_time: new Date().toISOString() } as never)
+    .insert({ user_id: userId, task_id: taskId, start_time: now.toISOString() } as never)
     .select()
     .single();
   if (error) throw error;
-  return data as unknown as StudySession;
+
+  const session = data as unknown as StudySession;
+  await logEvent(userId, 'study_session_started', {
+    session_id: session.id,
+    task_id: taskId,
+    start_slot: getCurrentTimeSlot(now),
+    start_hour: now.getHours(),
+  });
+
+  return session;
 }
 
 export async function endStudySession(userId: string, sessionId: string, pausedSeconds = 0) {
+  const now = new Date();
   const { data: rawData, error } = await supabase
     .from('study_session')
-    .update({ end_time: new Date().toISOString(), paused_seconds: pausedSeconds } as never)
+    .update({ end_time: now.toISOString(), paused_seconds: pausedSeconds } as never)
     .eq('id', sessionId)
     .select()
     .single();
@@ -26,7 +38,17 @@ export async function endStudySession(userId: string, sessionId: string, pausedS
     ? Math.round((new Date(data.end_time).getTime() - new Date(data.start_time).getTime()) / 60000)
     : null;
 
-  await logEvent(userId, 'study_session_ended', { session_id: sessionId, duration_minutes: durationMinutes });
+  const isAbandoned = durationMinutes !== null && durationMinutes < 3;
+
+  await logEvent(userId, 'study_session_ended', {
+    session_id: sessionId,
+    duration_minutes: durationMinutes,
+    paused_seconds: pausedSeconds,
+    end_slot: getCurrentTimeSlot(now),
+    end_hour: now.getHours(),
+    is_abandoned: isAbandoned,
+  });
+
   return data;
 }
 
