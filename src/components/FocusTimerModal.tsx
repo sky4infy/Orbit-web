@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Square, X, Sparkles, Clock, CheckCircle2, RotateCcw } from 'lucide-react';
 import { startStudySession, endStudySession } from '@/api/study_sessions';
-import { closeTask, type TaskWithChapter } from '@/api/tasks';
+import { closeTask, startTask, type TaskWithChapter } from '@/api/tasks';
 
 interface Props {
   userId: string;
@@ -112,6 +112,9 @@ export function FocusTimerModal({ userId, task, open, onClose, onSessionEnded }:
   async function handleStart() {
     startTimeRef.current = Date.now();
     setIsRunning(true);
+    if (task?.id) {
+      startTask(userId, task.id).catch(() => {});
+    }
     if (!sessionId && userId) {
       try {
         const session = await startStudySession(userId, task?.id ?? null);
