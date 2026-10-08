@@ -569,6 +569,15 @@ export interface AiMentorContext {
     fumbleFactor: string;
     relativeDifficulty: string;
     score: string | null;
+    isMultiSubject?: boolean;
+    subjectBreakdown?: Array<{
+      subjectName: string;
+      difficulty: string;
+      fumbleFactor: string;
+      score: string | null;
+      leakedChaptersCount: number;
+    }>;
+    studentNotes?: string | null;
     leakedChaptersCount: number;
   } | null;
   candidateTasks: Array<{ title: string; slot: TimeSlot; reason: string }>;
@@ -601,6 +610,15 @@ export async function buildAiMentorContext(
           latestAttempt.score !== null && latestAttempt.score !== undefined && latestAttempt.max_score
             ? `${latestAttempt.score}/${latestAttempt.max_score}`
             : null,
+        isMultiSubject: latestAttempt.is_multi_subject,
+        subjectBreakdown: latestAttempt.subject_breakdown?.map((sb) => ({
+          subjectName: sb.subject_name,
+          difficulty: sb.difficulty,
+          fumbleFactor: sb.fumble_factor,
+          score: sb.score && sb.max_score ? `${sb.score}/${sb.max_score}` : null,
+          leakedChaptersCount: sb.leaked_chapter_ids.length,
+        })),
+        studentNotes: latestAttempt.student_notes,
         leakedChaptersCount: latestAttempt.leaked_chapter_ids.length,
       }
     : null;
