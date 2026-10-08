@@ -28,6 +28,7 @@ import { DailyReflectionModal } from '@/components/DailyReflectionModal';
 import { FocusTimerModal } from '@/components/FocusTimerModal';
 import { SkipTaskModal } from '@/components/SkipTaskModal';
 import { CalibratePlanModal } from '@/components/CalibratePlanModal';
+import { TestDebriefModal } from '@/components/TestDebriefModal';
 import { AiMentorCard } from '@/components/AiMentorCard';
 import { getDueRevisions, type DueRevisionRow } from '@/api/revisions';
 import { RevisionSession } from '@/components/RevisionSession';
@@ -95,6 +96,7 @@ export default function PlannerPage() {
   const [revisionSessionOpen, setRevisionSessionOpen] = useState(false);
   const [pinnedTaskId, setPinnedTaskId] = useState<string | null>(null);
   const [missedTasks, setMissedTasks] = useState<TaskWithChapter[]>([]);
+  const [debriefTask, setDebriefTask] = useState<TaskWithChapter | null>(null);
 
   // Load track preference once from localStorage
   useEffect(() => {
@@ -272,11 +274,17 @@ export default function PlannerPage() {
     try {
       await closeTask(userId, task.id, 'completed');
       await refreshGamification();
-      setToast({
-        id: `done-${task.id}-${Date.now()}`,
-        message: 'Task completed! Keep your streak glowing.',
-        onUndo: () => handleUndoDone(task),
-      });
+
+      const isTest = /test|mock|paper|exam|quiz|midsem|pyq/i.test(task.title);
+      if (isTest) {
+        setDebriefTask(task);
+      } else {
+        setToast({
+          id: `done-${task.id}-${Date.now()}`,
+          message: 'Task completed! Keep your streak glowing.',
+          onUndo: () => handleUndoDone(task),
+        });
+      }
     } catch {
       refresh();
     }
@@ -833,6 +841,19 @@ export default function PlannerPage() {
             setRevisionSessionOpen(false);
             refresh();
           }}
+        />
+      )}
+
+      {/* Test Debrief Modal (Auto-triggered when test task is marked done) */}
+      {debriefTask && (
+        <TestDebriefModal
+          userId={userId ?? 'local-user'}
+          taskId={debriefTask.id}
+          examName={debriefTask.title}
+          initialChapters={debriefTask.chapter?.id ? [debriefTask.chapter.id] : []}
+          open={Boolean(debriefTask)}
+          onClose={() => setDebriefTask(null)}
+          onDebriefCompleted={refresh}
         />
       )}
 
