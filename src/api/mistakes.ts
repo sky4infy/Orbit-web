@@ -62,13 +62,16 @@ export async function logMistake(mistake: {
     } catch (err) {
       console.warn('Supabase mistake exception:', err);
     }
-
-    logEvent(mistake.user_id, 'mistake_logged', {
-      chapter_id: validChapterId,
-      difficulty: mistake.difficulty,
-      mistake_type: mistake.mistake_type,
-    }).catch(() => {});
   }
+
+  // Universal Behavioral Telemetry: mistake logged
+  logEvent(mistake.user_id || 'local-user', 'mistake_logged', {
+    mistake_id: newId,
+    chapter_id: validChapterId,
+    difficulty: mistake.difficulty,
+    mistake_type: mistake.mistake_type,
+    has_description: Boolean(mistake.description),
+  }).catch(() => {});
 
   notifyDataChanged('mistake-logged');
   return localM;
@@ -140,6 +143,12 @@ export async function resolveMistake(mistakeId: string) {
   } catch (err) {
     console.warn('Supabase resolveMistake exception:', err);
   }
+
+  // Universal Behavioral Telemetry: mistake resolved
+  logEvent('local-user', 'mistake_resolved', {
+    mistake_id: mistakeId,
+    resolved_at: new Date().toISOString(),
+  }).catch(() => {});
 
   notifyDataChanged('mistake-resolved');
 }
