@@ -6,6 +6,12 @@ import { generateUuid, isUuid } from '@/lib/uuid';
 import { resolveChapterId, isStarterTask, getCurriculumChapters } from '@/lib/curriculumData';
 import { ensureChapterInCloud } from '@/lib/syncService';
 import {
+  getCurrentTimeSlot,
+  calculateSlotDrift,
+  calculateDateDrift,
+  calculateAdvancePlanningDays,
+} from '@/lib/telemetry';
+import {
   db,
   getLocalTasksForDate,
   getLocalMissedTasks,
@@ -29,6 +35,12 @@ export interface TaskWithChapter {
   incomplete_reason: IncompleteReason | null;
   estimated_minutes: number | null;
   actual_minutes: number | null;
+  reschedule_count?: number;
+  created_slot?: TimeSlot | null;
+  completed_slot?: TimeSlot | null;
+  slot_drift?: string | null;
+  started_at?: string | null;
+  planner_source?: 'manual' | 'auto_calibrated';
   chapter: { id: string; name: string; subject: { id: string; name: string } } | null;
 }
 
@@ -78,7 +90,8 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
         .from('task')
         .select(
           `id, title, scheduled_date, time_slot, effort_level, priority, position, status,
-           incomplete_reason, estimated_minutes, actual_minutes,
+           incomplete_reason, estimated_minutes, actual_minutes, reschedule_count, created_slot, completed_slot, slot_drift,
+           started_at, planner_source, created_at, completed_at,
            chapter:chapter_id ( id, name, subject:subject_id ( id, name ) )`
         )
         .eq('user_id', userId)
@@ -108,8 +121,14 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
             incomplete_reason: d.incomplete_reason,
             estimated_minutes: d.estimated_minutes,
             actual_minutes: d.actual_minutes,
-            created_at: new Date().toISOString(),
-            completed_at: d.status === 'completed' ? new Date().toISOString() : null,
+            reschedule_count: d.reschedule_count ?? 0,
+            created_slot: d.created_slot ?? null,
+            completed_slot: d.completed_slot ?? null,
+            slot_drift: d.slot_drift ?? null,
+            started_at: (d as any).started_at ?? null,
+            planner_source: (d as any).planner_source ?? 'manual',
+            created_at: (d as any).created_at || new Date().toISOString(),
+            completed_at: d.status === 'completed' ? ((d as any).completed_at || new Date().toISOString()) : null,
           });
         }
 
@@ -178,6 +197,9 @@ export async function getTasksForDate(userId: string, date: string): Promise<Tas
 export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'completed_at'>) {
   const newId = generateUuid();
   const validChapterId = resolveChapterId(task.chapter_id);
+  const now = new Date();
+  const createdSlot = getCurrentTimeSlot(now);
+  const advanceDays = calculateAdvancePlanningDays(task.scheduled_date, format(now, 'yyyy-MM-dd'));
 
   const localTask: LocalTask = {
     ...task,
@@ -186,7 +208,13 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'complet
     incomplete_reason: null,
     estimated_minutes: task.estimated_minutes ?? 45,
     actual_minutes: task.actual_minutes ?? null,
-    created_at: new Date().toISOString(),
+    reschedule_count: 0,
+    created_slot: createdSlot,
+    completed_slot: null,
+    slot_drift: null,
+    started_at: null,
+    planner_source: task.planner_source || 'manual',
+    created_at: now.toISOString(),
     completed_at: null,
   };
 
@@ -202,8 +230,7 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'complet
       const { error } = await supabase
         .from('task')
         .insert({
-          ...task,
-          id: newId,
+          ...localTask,
           chapter_id: ensuredChapId,
         } as never)
         .select()
@@ -213,12 +240,43 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'complet
     } catch (err) {
       console.error('Cloud task push exception:', err);
     }
-
-    logEvent(task.user_id, 'task_created', { task_id: newId, chapter_id: validChapterId }).catch(() => {});
   }
+
+  // Universal Behavioral Telemetry: task created
+  logEvent(task.user_id || 'local-user', 'task_created', {
+    task_id: newId,
+    chapter_id: validChapterId,
+    title: task.title,
+    scheduled_date: task.scheduled_date,
+    scheduled_slot: task.time_slot,
+    created_slot: createdSlot,
+    advance_planning_days: advanceDays,
+    effort_level: task.effort_level,
+    estimated_minutes: task.estimated_minutes ?? 45,
+    priority: task.priority ?? 2,
+    planner_source: task.planner_source || 'manual',
+  }).catch(() => {});
 
   notifyDataChanged('task-created');
   return localTask as unknown as Task;
+}
+
+export async function startTask(userId: string, taskId: string) {
+  const now = new Date();
+  const updates = { started_at: now.toISOString() };
+  if (typeof window !== 'undefined') {
+    await updateLocalTask(taskId, updates);
+  }
+  if (userId && userId !== 'local-user') {
+    try {
+      await supabase.from('task').update(updates as never).eq('id', taskId);
+    } catch {}
+  }
+  logEvent(userId || 'local-user', 'task_started', {
+    task_id: taskId,
+    started_at: now.toISOString(),
+  }).catch(() => {});
+  notifyDataChanged('task-started');
 }
 
 export async function updateTask(
@@ -235,6 +293,11 @@ export async function updateTask(
   } catch (err) {
     console.error('Cloud task update exception:', err);
   }
+  logEvent('local-user', 'task_moved', {
+    task_id: taskId,
+    action: 'task_modified',
+    updates,
+  }).catch(() => {});
   notifyDataChanged('task-updated');
 }
 
@@ -248,40 +311,78 @@ export async function closeTask(
     throw new Error('incompleteReason is required when closing a task as skipped or moved');
   }
 
+  let existingTask: LocalTask | undefined;
+  if (typeof window !== 'undefined') {
+    existingTask = await db.tasks.get(taskId);
+  }
+
+  const now = new Date();
+  const completedSlot = getCurrentTimeSlot(now);
+  const scheduledSlot = existingTask?.time_slot || 'morning';
+  const scheduledDate = existingTask?.scheduled_date || format(now, 'yyyy-MM-dd');
+  const slotDriftInfo = calculateSlotDrift(scheduledSlot, completedSlot);
+  const dateDriftInfo = calculateDateDrift(scheduledDate, format(now, 'yyyy-MM-dd'));
+  const durationHours = existingTask?.created_at
+    ? Number(((now.getTime() - new Date(existingTask.created_at).getTime()) / 3600000).toFixed(2))
+    : null;
+  const estimatedMin = existingTask?.estimated_minutes ?? 45;
+  const actualMin = opts.actualMinutes ?? null;
+  const estimationRatio = actualMin ? Number((actualMin / estimatedMin).toFixed(2)) : null;
+
+  const updates: Partial<LocalTask> = {
+    status,
+    incomplete_reason: status === 'completed' ? null : opts.incompleteReason ?? null,
+    actual_minutes: actualMin,
+    completed_at: status === 'completed' ? now.toISOString() : null,
+    completed_slot: status === 'completed' ? completedSlot : null,
+    slot_drift: status === 'completed' ? slotDriftInfo.slot_drift : null,
+  };
+
   // Instant local update in IndexedDB
-  await updateLocalTaskStatus(taskId, status, opts.incompleteReason);
+  await updateLocalTask(taskId, updates);
 
   // Await cloud sync so other tabs see the completed / closed status immediately
   if (userId && userId !== 'local-user') {
     try {
       await supabase
         .from('task')
-        .update({
-          status,
-          incomplete_reason: status === 'completed' ? null : opts.incompleteReason,
-          actual_minutes: opts.actualMinutes ?? null,
-          completed_at: status === 'completed' ? new Date().toISOString() : null,
-        } as never)
+        .update(updates as never)
         .eq('id', taskId);
     } catch (err) {
       console.warn('Cloud task close error:', err);
     }
+  }
 
-    const eventMap: Record<string, 'task_completed' | 'task_skipped' | 'task_moved'> = {
-      completed: 'task_completed',
-      skipped: 'task_skipped',
-      moved: 'task_moved',
-    };
-    if (eventMap[status]) {
-      logEvent(userId, eventMap[status], {
-        task_id: taskId,
-        reason: opts.incompleteReason,
-      }).catch(() => {});
-    }
+  const eventMap: Record<string, 'task_completed' | 'task_skipped' | 'task_moved'> = {
+    completed: 'task_completed',
+    skipped: 'task_skipped',
+    moved: 'task_moved',
+  };
+  if (eventMap[status]) {
+    logEvent(userId || 'local-user', eventMap[status], {
+      task_id: taskId,
+      chapter_id: existingTask?.chapter_id,
+      title: existingTask?.title,
+      scheduled_date: scheduledDate,
+      scheduled_slot: scheduledSlot,
+      completed_slot: completedSlot,
+      slot_drift: slotDriftInfo.slot_drift,
+      is_slot_drifted: slotDriftInfo.is_slot_drifted,
+      slots_shifted: slotDriftInfo.slots_shifted,
+      date_drift_days: dateDriftInfo.date_drift_days,
+      is_delayed_date: dateDriftInfo.is_delayed_date,
+      latency_hours_since_creation: durationHours,
+      estimated_minutes: estimatedMin,
+      actual_minutes: actualMin,
+      estimation_ratio: estimationRatio,
+      reschedule_count: existingTask?.reschedule_count ?? 0,
+      effort_level: existingTask?.effort_level,
+      incomplete_reason: opts.incompleteReason ?? null,
+    }).catch(() => {});
   }
 
   notifyDataChanged('task-closed');
-  return { id: taskId, status } as unknown as Task;
+  return { id: taskId, status, ...updates } as unknown as Task;
 }
 
 export async function moveTaskToTomorrow(userId: string, taskId: string) {
@@ -295,10 +396,20 @@ export async function rescheduleTask(
   newDate: string,
   newSlot?: TimeSlot
 ) {
+  let existingTask: LocalTask | undefined;
+  if (typeof window !== 'undefined') {
+    existingTask = await db.tasks.get(taskId);
+  }
+
+  const now = new Date();
+  const rescheduleSlot = getCurrentTimeSlot(now);
+  const nextRescheduleCount = (existingTask?.reschedule_count ?? 0) + 1;
+
   const updates: Partial<LocalTask> = {
     scheduled_date: newDate,
     status: 'pending',
     incomplete_reason: null,
+    reschedule_count: nextRescheduleCount,
   };
   if (newSlot) {
     updates.time_slot = newSlot;
@@ -318,6 +429,21 @@ export async function rescheduleTask(
       console.warn('Cloud rescheduleTask error:', err);
     }
   }
+
+  // Universal Behavioral Telemetry: task postponed / moved
+  logEvent(userId || 'local-user', 'task_rescheduled', {
+    task_id: taskId,
+    chapter_id: existingTask?.chapter_id,
+    title: existingTask?.title,
+    from_date: existingTask?.scheduled_date,
+    to_date: newDate,
+    from_slot: existingTask?.time_slot,
+    to_slot: newSlot ?? existingTask?.time_slot,
+    reschedule_count: nextRescheduleCount,
+    action_slot: rescheduleSlot,
+    action_hour: now.getHours(),
+  }).catch(() => {});
+
   notifyDataChanged('task-rescheduled');
 }
 
@@ -445,6 +571,13 @@ export async function reorderTasks(tasks: { id: string; time_slot: TimeSlot; pos
   } catch (err) {
     console.warn('Cloud reorderTasks error:', err);
   }
+
+  logEvent('local-user', 'task_moved', {
+    action: 'reorder_or_slot_transfer',
+    reordered_count: tasks.length,
+    slots_involved: Array.from(new Set(tasks.map((t) => t.time_slot))),
+  }).catch(() => {});
+
   notifyDataChanged('task-reordered');
 }
 
