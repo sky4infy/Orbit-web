@@ -1,5 +1,13 @@
 import { supabase } from '@/lib/supabase/client';
-import { db, saveLocalTask, deleteLocalTask, saveLocalExam, deleteLocalExam } from '@/lib/db';
+import {
+  db,
+  saveLocalTask,
+  deleteLocalTask,
+  saveLocalExam,
+  deleteLocalExam,
+  getPendingLocalEvents,
+  markLocalEventsSynced,
+} from '@/lib/db';
 import { getHiddenSampleExams } from '@/api/exams';
 import {
   getCustomSubjects,
@@ -553,6 +561,12 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
           incomplete_reason: t.incomplete_reason,
           estimated_minutes: t.estimated_minutes,
           actual_minutes: t.actual_minutes,
+          reschedule_count: t.reschedule_count ?? 0,
+          created_slot: t.created_slot ?? null,
+          completed_slot: t.completed_slot ?? null,
+          slot_drift: t.slot_drift ?? null,
+          started_at: t.started_at ?? null,
+          planner_source: t.planner_source ?? 'manual',
           completed_at: t.completed_at,
         } as never, { onConflict: 'id' });
 
@@ -575,8 +589,9 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
       .eq('user_id', userId);
 
     if (!fetchError && cloudTasks) {
-      const taskList = (cloudTasks as any[]).filter((ct) => !isStarterTask(ct.title));
-      const cloudTaskIds = new Set(taskList.map((ct) => ct.id));
+      const taskList = (cloudTasks as any[]) ?? [];
+      const realTaskList = taskList.filter((ct) => !isStarterTask(ct.title));
+      const cloudTaskIds = new Set(realTaskList.map((ct) => ct.id));
 
       // Purge any local tasks in Dexie that were deleted in cloud on another device
       for (const lt of localTasks) {
@@ -585,7 +600,7 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
         }
       }
 
-      for (const ct of taskList) {
+      for (const ct of realTaskList) {
         await saveLocalTask({
           id: ct.id,
           user_id: userId,
@@ -600,6 +615,12 @@ export async function syncTasksBetweenLocalAndCloud(userId: string) {
           incomplete_reason: ct.incomplete_reason,
           estimated_minutes: ct.estimated_minutes,
           actual_minutes: ct.actual_minutes,
+          reschedule_count: ct.reschedule_count ?? 0,
+          created_slot: ct.created_slot ?? null,
+          completed_slot: ct.completed_slot ?? null,
+          slot_drift: ct.slot_drift ?? null,
+          started_at: ct.started_at ?? null,
+          planner_source: ct.planner_source ?? 'manual',
           created_at: ct.created_at,
           completed_at: ct.completed_at,
         });
@@ -705,6 +726,32 @@ export async function syncExamsBetweenLocalAndCloud(userId: string) {
 }
 
 /**
+ * Flushes any pending local events created offline to Supabase event_log with idempotency.
+ */
+export async function syncEventsToCloud(userId: string): Promise<void> {
+  if (!userId || userId === 'local-user') return;
+  try {
+    const pending = await getPendingLocalEvents();
+    if (pending.length === 0) return;
+
+    const payload = pending.map((e) => ({
+      id: e.id,
+      user_id: userId,
+      event_type: e.event_type,
+      metadata: e.metadata,
+      created_at: e.created_at,
+    }));
+
+    const { error } = await supabase.from('event_log').upsert(payload as never, { onConflict: 'id' });
+    if (!error) {
+      await markLocalEventsSynced(pending.map((e) => e.id));
+    }
+  } catch (err) {
+    console.warn('syncEventsToCloud error:', err);
+  }
+}
+
+/**
  * Master sync function to run whenever user is active.
  * Ensures Phone and PC have identical data.
  */
@@ -725,6 +772,7 @@ export async function syncAllUserData(userId: string): Promise<void> {
     await Promise.allSettled([
       syncTasksBetweenLocalAndCloud(userId),
       syncExamsBetweenLocalAndCloud(userId),
+      syncEventsToCloud(userId),
     ]);
 
     if (typeof window !== 'undefined') {
