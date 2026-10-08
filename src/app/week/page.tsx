@@ -11,6 +11,7 @@ import { ExamCard } from '@/components/ExamCard';
 import { AddExamModal } from '@/components/AddExamModal';
 import { EditExamModal } from '@/components/EditExamModal';
 import { AddTaskModal } from '@/components/AddTaskModal';
+import { TestDebriefModal } from '@/components/TestDebriefModal';
 import { useRequireAuth } from '@/lib/useRequireAuth';
 import { getCurriculumChapters } from '@/lib/curriculumData';
 import { syncAllUserData } from '@/lib/syncService';
@@ -107,6 +108,8 @@ export default function WeekPage() {
   const [loadingDay, setLoadingDay] = useState<string | null>(null);
   const [addExamOpen, setAddExamOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExamReadinessRow | null>(null);
+  const [debriefExam, setDebriefExam] = useState<ExamReadinessRow | null>(null);
+  const [quickDebriefOpen, setQuickDebriefOpen] = useState(false);
   const [planModalDate, setPlanModalDate] = useState<string | null>(null);
 
   // Read track preference once
@@ -278,12 +281,20 @@ export default function WeekPage() {
             </span>
           </div>
         </div>
-        <button
-          onClick={() => setAddExamOpen(true)}
-          className="rounded-xl bg-amber px-3.5 py-2 text-xs font-semibold text-ink shadow-md shadow-amber/20 hover:brightness-110 active:scale-95 transition"
-        >
-          + Add Test
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setQuickDebriefOpen(true)}
+            className="rounded-xl border border-amber/30 bg-amber/10 px-3 py-2 text-xs font-semibold text-amber hover:bg-amber/20 active:scale-95 transition"
+          >
+            🎯 Debrief Test
+          </button>
+          <button
+            onClick={() => setAddExamOpen(true)}
+            className="rounded-xl bg-amber px-3.5 py-2 text-xs font-semibold text-ink shadow-md shadow-amber/20 hover:brightness-110 active:scale-95 transition"
+          >
+            + Add Test
+          </button>
+        </div>
       </header>
 
       {/* Upcoming Tests / Milestones Section */}
@@ -302,6 +313,7 @@ export default function WeekPage() {
                 key={exam.exam_id}
                 exam={exam}
                 onEdit={(e) => setEditingExam(e)}
+                onDebrief={(e) => setDebriefExam(e)}
                 onDelete={handleDeleteExam}
               />
             ))}
@@ -361,6 +373,28 @@ export default function WeekPage() {
           onClose={() => setEditingExam(null)}
           onUpdated={refresh}
           onDeleted={(id) => handleDeleteExam(id)}
+        />
+      )}
+
+      {/* Test Debrief Modal (From Exam Card) */}
+      {debriefExam && (
+        <TestDebriefModal
+          userId={userId ?? 'local-user'}
+          examId={debriefExam.exam_id}
+          examName={debriefExam.name}
+          open={Boolean(debriefExam)}
+          onClose={() => setDebriefExam(null)}
+          onDebriefCompleted={refresh}
+        />
+      )}
+
+      {/* Quick Standalone Test Debrief Modal */}
+      {quickDebriefOpen && (
+        <TestDebriefModal
+          userId={userId ?? 'local-user'}
+          open={quickDebriefOpen}
+          onClose={() => setQuickDebriefOpen(false)}
+          onDebriefCompleted={refresh}
         />
       )}
 
