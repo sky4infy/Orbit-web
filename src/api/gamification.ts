@@ -18,14 +18,48 @@ export async function getStreak(userId?: string, lookbackDays = 60): Promise<num
     if (typeof window !== 'undefined' && db?.tasks) {
       const localCompleted = await db.tasks.where('status').equals('completed').toArray();
       for (const t of localCompleted) {
-        const completionDay = t.completed_at ? format(new Date(t.completed_at), 'yyyy-MM-dd') : t.scheduled_date;
-        if (completionDay && completionDay >= since) {
-          daysWithCompletion.add(completionDay);
+        // Scheduled study day counts
+        if (t.scheduled_date && t.scheduled_date >= since) {
+          daysWithCompletion.add(t.scheduled_date);
+        }
+        // Actual completion timestamp day counts
+        if (t.completed_at) {
+          try {
+            const completionDay = format(new Date(t.completed_at), 'yyyy-MM-dd');
+            if (completionDay && completionDay >= since) {
+              daysWithCompletion.add(completionDay);
+            }
+          } catch {}
         }
       }
     }
   } catch (err) {
     console.warn('Failed reading local tasks for streak:', err);
+  }
+
+  // 1b. Query secondary local study activities (spaced revisions & exam attempts)
+  try {
+    if (typeof window !== 'undefined' && db?.revisions) {
+      const localRevs = await db.revisions.where('review_count').above(0).toArray();
+      for (const r of localRevs) {
+        if (r.last_reviewed_at) {
+          try {
+            const rDay = format(new Date(r.last_reviewed_at), 'yyyy-MM-dd');
+            if (rDay >= since) daysWithCompletion.add(rDay);
+          } catch {}
+        }
+      }
+    }
+    if (typeof window !== 'undefined' && db?.test_attempts) {
+      const localTests = await db.test_attempts.toArray();
+      for (const ta of localTests) {
+        if (ta.attempt_date && ta.attempt_date >= since) {
+          daysWithCompletion.add(ta.attempt_date);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed reading secondary local study items for streak:', err);
   }
 
   // 2. Query Supabase cloud (cross-device sync)
@@ -40,8 +74,15 @@ export async function getStreak(userId?: string, lookbackDays = 60): Promise<num
       if (!error && data) {
         const rows = data as unknown as { scheduled_date: string; completed_at: string | null; status: string }[];
         for (const r of rows) {
-          const cDay = r.completed_at ? format(new Date(r.completed_at), 'yyyy-MM-dd') : r.scheduled_date;
-          if (cDay && cDay >= since) daysWithCompletion.add(cDay);
+          if (r.scheduled_date && r.scheduled_date >= since) {
+            daysWithCompletion.add(r.scheduled_date);
+          }
+          if (r.completed_at) {
+            try {
+              const cDay = format(new Date(r.completed_at), 'yyyy-MM-dd');
+              if (cDay && cDay >= since) daysWithCompletion.add(cDay);
+            } catch {}
+          }
         }
       }
     } catch (err) {
