@@ -851,6 +851,7 @@ export default function PlannerPage() {
           taskId={debriefTask.id}
           examName={debriefTask.title}
           initialChapters={debriefTask.chapter?.id ? [debriefTask.chapter.id] : []}
+          track={track}
           open={Boolean(debriefTask)}
           onClose={() => setDebriefTask(null)}
           onDebriefCompleted={refresh}
