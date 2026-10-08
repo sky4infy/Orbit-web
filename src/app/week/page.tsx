@@ -382,6 +382,7 @@ export default function WeekPage() {
           userId={userId ?? 'local-user'}
           examId={debriefExam.exam_id}
           examName={debriefExam.name}
+          track={track}
           open={Boolean(debriefExam)}
           onClose={() => setDebriefExam(null)}
           onDebriefCompleted={refresh}
@@ -392,6 +393,7 @@ export default function WeekPage() {
       {quickDebriefOpen && (
         <TestDebriefModal
           userId={userId ?? 'local-user'}
+          track={track}
           open={quickDebriefOpen}
           onClose={() => setQuickDebriefOpen(false)}
           onDebriefCompleted={refresh}
