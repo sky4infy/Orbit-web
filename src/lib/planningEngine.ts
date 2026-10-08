@@ -2,6 +2,8 @@ import type { TrackType, TimeSlot, EffortLevel } from '@/types/database.types';
 import type { TaskWithChapter } from '@/api/tasks';
 import { getCurriculumChapters } from '@/lib/curriculumData';
 import type { UnifiedStudentState, UnifiedChapterState } from '@/lib/academicState';
+import { generateUuid } from '@/lib/uuid';
+import { logEvent } from '@/api/events';
 
 export interface PlanningEngineInput {
   userId: string;
@@ -28,6 +30,7 @@ export interface SuggestedTask {
 }
 
 export interface PlanningEngineOutput {
+  planRunId: string;
   suggestedTasks: SuggestedTask[];
   totalPlannedMinutes: number;
   maxRecommendedMinutes: number;
@@ -43,6 +46,7 @@ export interface PlanningEngineOutput {
  * mistake taxonomy, and cognitive capacity constraints.
  */
 export function generateOptimalDayPlan(input: PlanningEngineInput): PlanningEngineOutput {
+  const planRunId = generateUuid();
   const isOlympiad = input.track === 'jee_nsep';
   const state = input.academicState;
 
@@ -278,7 +282,21 @@ export function generateOptimalDayPlan(input: PlanningEngineInput): PlanningEngi
     rationale += ` 🛡️ Fatigue Protection Active: Workload calibrated down to ${Math.round(allocatedMinutes / 60 * 10) / 10}h based on recent sleep/energy trends.`;
   }
 
+  // Universal Behavioral Telemetry: planner run generated
+  logEvent(input.userId || 'local-user', 'plan_generated', {
+    plan_run_id: planRunId,
+    planner_version: '2.0',
+    date: input.date,
+    track: input.track,
+    total_planned_minutes: allocatedMinutes,
+    max_recommended_minutes: maxRecommendedMinutes,
+    allocated_tasks_count: suggestedTasks.length,
+    primary_focus: topChapter?.name ?? 'Core Concept Mastery',
+    fatigue_risk: fatigueRisk,
+  }).catch(() => {});
+
   return {
+    planRunId,
     suggestedTasks,
     totalPlannedMinutes: allocatedMinutes,
     maxRecommendedMinutes,
