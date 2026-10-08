@@ -4,6 +4,7 @@ import { getLocalExams, saveLocalExam, deleteLocalExam, getLocalExam, type Local
 import { getCurriculumChapters, resolveChapterId } from '@/lib/curriculumData';
 import { generateUuid, isUuid } from '@/lib/uuid';
 import { notifyDataChanged } from '@/lib/syncEvents';
+import { logEvent } from '@/api/events';
 
 const HIDDEN_SAMPLE_EXAMS_KEY = 'orbit_hidden_sample_exams';
 
@@ -141,6 +142,15 @@ export async function createExam(
       console.error('Cloud exam insert exception:', err);
     }
   }
+
+  // Universal Behavioral Telemetry: exam created
+  logEvent(userId || 'local-user', 'exam_created', {
+    exam_id: newId,
+    name,
+    exam_type: examType,
+    exam_date: examDate,
+    target_chapter_count: validChapterIds.length,
+  }).catch(() => {});
 
   notifyDataChanged('exam-created');
   return { id: newId };
