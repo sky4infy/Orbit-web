@@ -169,7 +169,7 @@ export async function getLocalTasksForDate(userId: string, date: string, track: 
     const list = await db.tasks
       .where('scheduled_date')
       .equals(date)
-      .and((t) => t.user_id === userId || !t.user_id)
+      .and((t) => !userId || !t.user_id || t.user_id === userId || t.user_id === 'local-user' || userId === 'local-user')
       .sortBy('position');
 
     const chapters = getCurriculumChapters('all');
@@ -177,14 +177,14 @@ export async function getLocalTasksForDate(userId: string, date: string, track: 
 
     // If empty: for unauthenticated guest, return starters in memory; for logged in user, return []
     if (list.length === 0) {
-      if (!userId) {
+      if (!userId || userId === 'local-user') {
         return getStarterTasks(track, date);
       }
       return [];
     }
 
     // For authenticated users, completely filter out starter tasks
-    const effectiveList = userId ? list.filter((t) => !isStarterTask(t.title)) : list;
+    const effectiveList = (userId && userId !== 'local-user') ? list.filter((t) => !isStarterTask(t.title)) : list;
 
     return effectiveList.map((t) => {
       const resolvedChapId = resolveChapterId(t.chapter_id);
@@ -206,10 +206,10 @@ export async function getLocalMissedTasks(userId: string, beforeDate: string): P
     const list = await db.tasks
       .where('scheduled_date')
       .below(beforeDate)
-      .and((t) => (t.user_id === userId || !t.user_id) && t.status === 'pending')
+      .and((t) => (!userId || !t.user_id || t.user_id === userId || t.user_id === 'local-user' || userId === 'local-user') && t.status === 'pending')
       .toArray();
 
-    return userId ? list.filter((t) => !isStarterTask(t.title)) : list;
+    return (userId && userId !== 'local-user') ? list.filter((t) => !isStarterTask(t.title)) : list;
   } catch (err) {
     console.warn('Dexie read missed tasks failed:', err);
     return [];
