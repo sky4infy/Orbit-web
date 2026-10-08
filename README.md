@@ -1,20 +1,21 @@
 # Orbit — Adaptive Academic Operating System
 
-> **An intelligent, local-first Academic OS for STEM/JEE and College CS/AI-ML students.**  
-> Orbit closes the loop between daily study sessions, error logging, cognitive fatigue protection, and long-term memory retention.
+> **An intelligent, local-first Academic OS for STEM/JEE and College CS/AI-ML scholars.**  
+> Orbit closes the loop between daily study sessions, error logging, post-test diagnostic debriefs, cognitive fatigue protection, and long-term memory retention.
 
 ---
 
-## 📚 Official User Guide
-Complete tab-by-tab walkthrough and executive manual:
-* 📄 **[Download Official Master PDF (`orbit_guide.pdf`)](./orbit_guide.pdf)** — Publication-grade 5-page A4 executive manual.
-* 📝 **[Read Markdown Guide (`orbit_guide.md`)](./orbit_guide.md)** — Clean GitHub-native documentation.
+## 📚 Official User Guide & Architecture
+Complete tab-by-tab walkthrough, architectural audit, and manual:
+* 📝 **[Read Master Markdown Guide (`orbit_guide.md`)](./orbit_guide.md)** — Comprehensive 5-page guide to every tab, feature, and workflow.
+* 📄 **[Download Official Master PDF (`orbit_guide.pdf`)](./orbit_guide.pdf)** — Publication-grade A4 executive manual.
+* 🏛 **[Architectural Audit & Roadmap (`orbit_v2_architectural_audit.md`)](./orbit_v2_architectural_audit.md)** — In-depth architectural blueprint and technical design decisions.
 
 ---
 
 ## 🏛 System Architecture
 
-Orbit is engineered with a **dual-layer, local-first architecture**. It pairs zero-latency offline client state (IndexedDB via Dexie.js) with real-time multi-device cloud synchronization and relational integrity (PostgreSQL via Supabase).
+Orbit is engineered with a **dual-layer, local-first architecture**. It pairs zero-latency client state (IndexedDB via Dexie.js) with real-time multi-device cloud synchronization and relational integrity (PostgreSQL via Supabase).
 
 ```
                       ┌─────────────────────────────────────────┐
@@ -26,50 +27,52 @@ Orbit is engineered with a **dual-layer, local-first architecture**. It pairs ze
       ┌─────────────────────────────────────────────────────────────────────────┐
       │                    UNIFIED ACADEMIC MEMORY ENGINE                       │
       │                     (src/lib/academicState.ts)                          │
-      ├────────────────────────────────────┬────────────────────────────────────┤
-      │                                    │                                    │
-      ▼                                    ▼                                    ▼
-┌───────────────┐                  ┌───────────────┐                  ┌───────────────────┐
-│ FATIGUE SHIELD│                  │ FSRS RETENTION│                  │  ERROR TAXONOMY   │
-│ & CAPACITY    │                  │    ENGINE     │                  │  & AUTO-REVISION  │
-│ (Sleep/Energy)│                  │(SM-2 Adaptive)│                  │ (Root-cause Tag)  │
-└───────┬───────┘                  └───────┬───────┘                  └─────────┬─────────┘
-        │                                  │                                    │
-        └──────────────────────────────────┼────────────────────────────────────┘
-                                           │
-                                           ▼
-                    ┌──────────────────────────────────────────────┐
-                    │            DUAL PERSISTENCE LAYER            │
-                    ├──────────────────────────────┬───────────────┤
-                    │   LOCAL-FIRST (0ms Latency)  │  CLOUD SYNC   │
-                    │      IndexedDB / Dexie       │   Supabase    │
-                    │      ('OrbitStudyOS')        │  (Postgres)   │
-                    └──────────────────────────────┴───────────────┘
+      ├────────────────────┬────────────────────┬───────────────────────────────┤
+      │                    │                    │                               │
+      ▼                    ▼                    ▼                               ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────────┐           ┌───────────────────┐
+│ FATIGUE SHIELD│  │ FSRS RETENTION│  │  ERROR TAXONOMY   │           │ POST-TEST DEBRIEF │
+│ & CAPACITY    │  │    ENGINE     │  │  & AUTO-REVISION  │           │ & EXAM ANALYTICS  │
+│ (Sleep/Energy)│  │(SM-2 Adaptive)│  │ (Root-cause Tag)  │           │(Subject Breakdown)│
+└───────┬───────┘  └───────┬───────┘  └─────────┬─────────┘           └─────────┬─────────┘
+        │                  │                    │                               │
+        └──────────────────┴────────────────────┼───────────────────────────────┘
+                                                │
+                                                ▼
+                     ┌──────────────────────────────────────────────┐
+                     │            DUAL PERSISTENCE LAYER            │
+                     ├──────────────────────────────┬───────────────┤
+                     │   LOCAL-FIRST (0ms Latency)  │  CLOUD SYNC   │
+                     │      IndexedDB / Dexie       │   Supabase    │
+                     │      ('OrbitStudyOS')        │  (Postgres)   │
+                     └──────────────────────────────┴───────────────┘
 ```
 
 ### Detailed Component Flow
 
 ```mermaid
 graph TD
-    A[Student Interaction] --> B[Planner / Journey / Mistake Desk]
-    B --> C[Academic Memory Engine]
+    A[Student Interaction] --> B[Planner / Journey / Mistake Desk / Exam Radar]
+    B --> C[Academic Memory & Telemetry Engine]
     
     subgraph Cognitive Intelligence
         C --> D[Fatigue Shield: Sleep & Energy Throttling]
         C --> E[FSRS Spaced Repetition Algorithm]
-        C --> F[Mistake Taxonomy Engine]
+        C --> F[Mistake Taxonomy & Error Book]
+        C --> G[Interactive Post-Test Debrief Engine]
     end
     
     subgraph Local Storage
-        D --> G[(Dexie.js / IndexedDB)]
-        E --> G
-        F --> G
+        D --> H[(Dexie.js / IndexedDB 'OrbitStudyOS')]
+        E --> H
+        F --> H
+        G --> H
     end
 
     subgraph Remote Cloud
-        G -.->|Background Sync| H[(Supabase Postgres)]
-        H --> I[Row Level Security RLS]
-        H --> J[Security Invoker Views]
+        H -.->|Resilient Background Sync| I[(Supabase Postgres)]
+        I --> J[Row Level Security RLS]
+        I --> K[Security Invoker Views]
     end
 ```
 
@@ -78,63 +81,62 @@ graph TD
 ## ⚡ Core Innovations & Features
 
 ### 1. Unified Academic Memory Engine (`src/lib/academicState.ts`)
-Consolidates student velocity, active backlogs, mistake taxonomies (conceptual vs. calculation), target exam proximity, and energy profiles into a single reactive state representation.
+Consolidates student study velocity, active backlogs, mistake taxonomies (conceptual vs. calculation), target exam proximity, and energy profiles into a single reactive state representation with zero UI blocking.
 
-### 2. Cognitive Capacity & Fatigue Shield (`src/lib/planningEngine.ts`)
-* Automatically monitors sleep duration and energy scores.
+### 2. Interactive Post-Test Micro-Debrief Engine (`src/components/TestDebriefModal.tsx`, `src/api/testAttempts.ts`)
+* **3-Step Micro-Debrief:** Automatically triggers when completing a mock task or via the Exam Card debrief action button.
+* **Single vs. Multi-Subject Adaptability:** Automatically adapts to single-discipline tests (e.g. COA Midsem, Organic Chemistry test) or composite multi-subject exams (e.g. JEE Main, Advanced).
+* **Accurate Syllabus Alignment:** Only displays the exact subjects and chapters selected during test creation.
+* **Deep Error Diagnosis:** Captures paper difficulty (*Easy, Balanced, Crushing*), fumble factor (*Concept blindspot, Time panic, Calculation slips, In control*), and relative difficulty vs. peers.
+* **Closed-Loop Mistake Linkage:** Directly links leaked chapters into the Mistake Vault for automated spaced review enrollment.
+* **Unfiltered Reflection Space:** Dedicated student notes area for honest qualitative insights.
+
+### 3. Cognitive Capacity & Fatigue Shield (`src/lib/planningEngine.ts`)
+* Monitors sleep duration and subjective energy ratings.
 * When sleep is $< 6.0\text{ h}$ or energy score $\le 2/5$:
   * **Throttles tactical load** by capping total daily hours to $4.0\text{ h}$.
   * **Filters out high-strain problem sets** and complex conceptual tasks.
   * **Prioritizes low-friction active recall** and light revision to prevent cognitive burnout.
 
-### 3. FSRS Adaptive Spaced Repetition (`src/lib/spacedRepetition.ts`)
+### 4. FSRS Adaptive Spaced Repetition (`src/lib/spacedRepetition.ts`)
 * Enhanced SM-2 / Free Spaced Repetition Scheduler.
 * Dynamically calculates recall stability, difficulty factors, and optimal review intervals:
   $$\text{Interval}_{\text{next}} = \text{Interval}_{\text{prev}} \times \text{Ease Factor} \times \text{Grade Multiplier}$$
 * **Error Backlog Dampening:** If a chapter has high unaddressed mistake density, review intervals are automatically compressed to reinforce fragile neural pathways.
 * Features an **in-place 3-grade recall chamber** (`Again`, `Hard`, `Good`) directly on the Planner desk.
 
-### 4. Closed-Loop Mistake Book (`src/api/mistakes.ts`)
+### 5. Universal Streak Accuracy & Offline-First Engine (`src/api/gamification.ts`)
+* **Multi-Signal Streak Continuity:** Both `scheduled_date` and `completed_at` timestamps contribute to daily completion sets, ensuring streaks (4-day, 10-day, 30-day+) never collapse from batch-completion or timezone shifts.
+* **Holistic Study Recognition:** Spaced repetition revisions and mock test attempts also count towards daily streak continuity.
+* **Non-Destructive Local Sync:** Background sync never purges local tasks from Dexie IndexedDB, guaranteeing 100% offline data safety.
+* **Schema Fallbacks:** Cloud mutations automatically fall back to standard core schemas if remote databases have not yet run extended telemetry migrations.
+
+### 6. Subject-First Exam Planner & Editor (`src/components/AddExamModal.tsx`, `src/components/EditExamModal.tsx`)
+* **Progressive Disclosure:** First enter the exam title, then pick participating subjects with clean clickable badges, and finally select chapters organized in a tabbed syllabus view.
+* **Eliminates Clutter:** Guarantees that coaching tests, contests, and semester exams only show syllabus chapters relevant to their chosen subjects.
+
+### 7. Closed-Loop Mistake Book (`src/api/mistakes.ts`)
 * Classifies errors into rigorous cognitive categories: `Conceptual`, `Calculation`, `Careless`, `Application`, or `Time Management`.
 * Automatically enrolls the underlying syllabus chapter into the spaced repetition queue upon logging an error.
 
-### 5. Onboarding Track Lock-In & Isolation
+### 8. Onboarding Track Lock-In & Isolation
 * Academic focus track is selected **once during account signup**:
   * **STEM & Olympiad Track:** Physics, Chemistry, and Mathematics calibrated to JEE Main, Advanced, and NSEP.
   * **College CS & AI-ML Track:** Data Structures & Algorithms, Machine Learning & Deep Learning, Web Systems, and Core Computer Science.
-* **Locked Inside the App:** Track selection controls are permanently removed from inside the application. The Account & Preferences page displays a locked, read-only credential badge so syllabus state cannot be accidentally corrupted or toggled mid-preparation.
-* **Auto-Recovery Engine:** The curriculum loader actively verifies that custom subjects belong to the student's chosen track and automatically heals any accidental legacy switches.
+* **Locked Inside the App:** Track selection controls are permanently removed from inside the application to prevent syllabus desync.
 
-### 6. Multi-Surface Task Undo Protection
-* **Direct Checkmark Toggle:** Accidentally marked a task done? Simply tap the green checkmark again — it immediately restores the task back to active and recalculates the daily Orbit ring.
-* **Instant Undo Toast:** A 6-second bottom notification bar provides an instant "Undo" button for accidental misclicks.
+### 9. Behavioral Telemetry & DPDP Compliance (`src/lib/telemetry.ts`, `src/api/events.ts`)
+* Offline-first outbox in Dexie (`db.events`) with automatic cloud flush.
+* Enriches events with slot drift (planned morning vs. executed night), date drift, advance planning ratio, and focus duration.
+* Full India Digital Personal Data Protection (DPDP) Act compliance with privacy disclosure and guest data self-containment.
 
-### 7. Multi-Device Cloud Synchronization Engine (`src/lib/syncService.ts`)
-* **Zero-Loss Offline Migration:** Automatically reconciles local client state (Dexie IndexedDB and `localStorage`) with Supabase PostgreSQL upon user login.
-* **Schema Contract Normalization (`src/lib/uuid.ts`):** Guarantees strict RFC 4122 v4 UUID compliance across all mutations, preventing relational foreign-key validation failures.
-* **Starter Task Firewall:** Enforces strict boundary separation between mock demonstration tasks and authenticated user accounts, ensuring deleted tasks are never resurrected.
-* **Cross-Device Curriculum Sync:** Backs up user-deleted subjects, custom disciplines, and syllabus modifications to Supabase `event_log` and `subject` tables, guaranteeing parity between phone and PC.
-* **Single-Execution Reconciliation:** Eliminates UI flicker through idempotent lifecycle guards (`hasInitializedRef`), providing instant in-place updates without full-screen reloads.
+### 10. AI Mentor Context Contract (`src/lib/aiMentorContext.ts`)
+* Generates a deterministic, structured `AiMentorContext` JSON snapshot consolidating student habits, subject breakdown scores, fatigue history, and recent test debriefs for future LLM mentor integrations.
 
-### 8. Drift-Proof Focus Engine & Screen WakeLock API (`src/components/FocusTimerModal.tsx`)
-* **Timestamp-Delta Precision:** Replaces fragile `setInterval` tick counters with real system timestamp deltas ($\Delta t = \text{Date.now()} - t_{\text{start}}$), completely immune to mobile background tab throttling or phone sleep.
-* **Page Visibility API:** Automatically detects when the phone is unlocked or the browser tab is focused (`visibilitychange`) and syncs elapsed seconds down to the exact millisecond.
-* **W3C Screen WakeLock:** Keeps the mobile display active during focused study blocks, preventing premature screen timeouts while solving problems on paper. Automatically releases the lock when paused or completed.
-
----
-
-## 🔮 Product Roadmap (Upcoming Modules)
-
-Orbit is built with clean architectural boundaries to seamlessly integrate the following planned modules:
-
-| Feature | Category | Planned Capability |
-| :--- | :--- | :--- |
-| **Deep Reasoning Mentor** | AI / LLM | Connect Claude / Gemini / DeepSeek API to diagnose conceptual blindspots directly from logged mistake patterns after initial data accumulation. |
-| **OCR Mistake Ingestion** | Vision AI | Snap photos of handwritten scratchwork or test questions; auto-converts math into LaTeX equations and auto-detects calculation slips. |
-| **Focus Duration Telemetry** | Analytics | Uses `study_session` logs to detect cognitive efficiency drop-offs (e.g. *"Focus fades after 75 minutes"*). |
-| **Peer Focus Circles** | Social Accountability | Silent co-working rooms leveraging `orbit_partner_name` for mutual Pomodoro accountability. |
-| **Anki Deck Export** | Retention Sync | 1-click export of unaddressed mistakes and key formulas into standard Anki `.apkg` files for mobile flashcard review. |
-| **Mock Test Simulator** | Exam Simulation | Timed full-screen exam simulation replicating the exact NTA JEE / GATE computer terminal interface. |
+### 11. Drift-Proof Focus Engine & Screen WakeLock API (`src/components/FocusTimerModal.tsx`)
+* **Timestamp-Delta Precision:** Uses real system timestamp deltas ($\Delta t = \text{Date.now()} - t_{\text{start}}$), immune to mobile background tab throttling.
+* **Page Visibility API:** Syncs elapsed seconds immediately upon returning to the tab.
+* **W3C Screen WakeLock:** Keeps the mobile display active during deep work sessions, auto-releasing upon pause or completion.
 
 ---
 
@@ -142,22 +144,18 @@ Orbit is built with clean architectural boundaries to seamlessly integrate the f
 
 The backend runs on Supabase PostgreSQL with strict Row Level Security (RLS) policies and idempotent setup:
 
-* **`profile`** — User metadata, target exams, sleep and energy preferences.
+* **`profile`** — User metadata, display name, target exams, sleep and energy preferences.
 * **`subject`** — Academic disciplines partitioned by track (`jee_nsep`, `college_cs_aiml`).
-* **`chapter`** — Complete syllabus chapters with exam weightage indicators.
+* **`chapter`** — Complete syllabus chapters with subject foreign keys.
 * **`user_chapter_progress`** — Personal mastery percentage, confidence score, and status lifecycle.
-* **`task`** — Daily atomic tasks with estimated minutes, priority, and energy cost.
+* **`task`** — Daily atomic tasks with estimated minutes, priority, time slots, and completion tracking.
 * **`study_session`** — Focus sessions with duration analytics.
-* **`mistake`** — Logged errors with root cause tagging, photo attachments, and resolution status.
-* **`revision`** — Spaced repetition schedule with stability, ease factors, and review counts.
-* **`reflection`** — Evening check-ins, fatigue logging, and qualitative notes.
+* **`mistake`** — Logged errors with root cause tagging, difficulty, and resolution status.
+* **`revision`** — Spaced repetition schedule with intervals, ease factors, and review counts.
+* **`reflection`** — Evening check-ins, fatigue logging, sleep hours, and qualitative notes.
 * **`event_log`** — Append-only behavioral event stream for deep work analytics.
-* **`exam` & `exam_chapter`** — Mock tests and upcoming milestones mapped to syllabus coverage.
-
-### Pre-computed Performance Views
-1. **`my_chapter_status`** — Dynamic chapter-level progress, mistake counts, and revision due dates.
-2. **`my_subject_progress`** — Subject-level completion percentage and confidence distribution.
-3. **`my_exam_readiness`** — Holistic syllabus readiness score weighted by exam blueprint.
+* **`exam` & `exam_chapter`** — Mock tests and milestones mapped to syllabus coverage.
+* **`test_attempts` (Dexie Local & Event Stream)** — Rich exam attempt debriefs with subject breakdowns and student reflections.
 
 ---
 
@@ -172,10 +170,10 @@ The backend runs on Supabase PostgreSQL with strict Row Level Security (RLS) pol
 1. In your Supabase Project dashboard, navigate to the **SQL Editor**.
 2. Open **`supabase/complete_orbit_database.sql`** from this repository.
 3. Paste and run the entire script. It is **100% idempotent** and will:
-   * Create all 12 tables and constraints.
+   * Create all core tables, constraints, and indexes.
    * Enable Row Level Security (RLS) with self-ownership policies.
    * Configure auth triggers for automatic user onboarding.
-   * Seed all 7 curriculum subjects and 49 core syllabus chapters.
+   * Seed standard curriculum subjects and syllabus chapters.
 
 ### 2. Configure Environment Variables
 Copy `.env.example` to `.env.local`:
@@ -188,9 +186,6 @@ Fill in your project credentials (found in Supabase Dashboard → Settings → A
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
 ```
-
-> [!CAUTION]
-> The `NEXT_PUBLIC_SUPABASE_URL` must be the bare URL (e.g. `https://xxxx.supabase.co`). Do not append `/rest/v1/`.
 
 ### 3. Install & Run Locally
 ```bash
@@ -209,24 +204,10 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ## 📱 Progressive Web App (PWA)
 
-Orbit is built as an installable PWA with offline caching:
+Orbit is built as an installable PWA with full offline capabilities:
 * **iOS (Safari):** Tap **Share** → **Add to Home Screen**.
 * **Android (Chrome):** Tap **Install Orbit** from the browser prompt.
 * **Desktop (Chrome/Edge):** Click the **Install** icon in the address bar.
-
----
-
-## 🌐 Production Deployment (Vercel)
-
-1. Push your code to your GitHub repository:
-   ```bash
-   git push origin main
-   ```
-2. In [Vercel](https://vercel.com), import your repository.
-3. Add the following **Environment Variables** in Project Settings:
-   * `NEXT_PUBLIC_SUPABASE_URL`
-   * `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. Click **Deploy**. Vercel will output your production URL.
 
 ---
 
@@ -234,45 +215,50 @@ Orbit is built as an installable PWA with offline caching:
 
 ```
 ├── src/
-│   ├── api/               # Domain-specific Supabase & Dexie persistence drivers
+│   ├── api/               # Supabase & Dexie persistence drivers
 │   │   ├── chapters.ts
-│   │   ├── events.ts
-│   │   ├── exams.ts
-│   │   ├── gamification.ts
-│   │   ├── journey.ts
+│   │   ├── events.ts      # Offline-first behavioral telemetry outbox
+│   │   ├── exams.ts       # Milestone & exam management
+│   │   ├── gamification.ts# Streak & XP leveling engine
+│   │   ├── journey.ts     # Syllabus tree & chapter dossier
 │   │   ├── mistakes.ts    # Error logging + auto-spaced repetition trigger
 │   │   ├── profile.ts
-│   │   ├── revisions.ts   # Local-first Dexie spaced repetition queues
+│   │   ├── reflection.ts  # Daily reflection & fatigue check-in
+│   │   ├── revisions.ts   # Spaced repetition queues
 │   │   ├── study_sessions.ts
-│   │   └── tasks.ts
+│   │   ├── tasks.ts       # Task CRUD, status updates & cloud sync
+│   │   └── testAttempts.ts# Post-test debrief recording & mistake linkage
 │   ├── app/               # Next.js App Router pages
-│   │   ├── journey/       # Interactive syllabus tree
-│   │   ├── login/         # Supabase Auth
+│   │   ├── journey/       # Interactive syllabus tree & chapter dossiers
+│   │   ├── login/         # Supabase Auth with track lock-in
 │   │   ├── mistakes/      # Mistake Book with error taxonomy
 │   │   ├── planner/       # Tactical cockpit & recall chamber
-│   │   ├── profile/       # Energy, sleep & account settings
-│   │   └── week/          # 7-day tactical load & exam radar
+│   │   ├── profile/       # Energy, sleep, account settings & JSON backup
+│   │   └── week/          # 7-day tactical load, exams & test debriefs
 │   ├── components/        # Reusable design system & desk widgets
-│   │   ├── AiMentorCard.tsx
-│   │   ├── CalibratePlanModal.tsx
-│   │   ├── RevisionSession.tsx
+│   │   ├── AddExamModal.tsx      # Subject-first exam creation
+│   │   ├── EditExamModal.tsx     # Tabbed syllabus exam editing
+│   │   ├── TestDebriefModal.tsx  # 3-step post-test micro-debrief
+│   │   ├── FocusTimerModal.tsx   # Drift-proof timer with WakeLock
+│   │   ├── CalibratePlanModal.tsx# Anti-burnout auto-calibration
 │   │   └── ...
-│   ├── db/
-│   │   └── client.ts      # Dexie.js IndexedDB schema ('OrbitStudyOS')
-│   └── lib/               # Intelligence engines & sync utilities
-│       ├── academicState.ts   # Unified Academic Memory State
-│       ├── curriculumData.ts  # Curriculum taxonomy & ID resolvers
-│       ├── planningEngine.ts  # Capacity & Fatigue Shield
-│       ├── spacedRepetition.ts# FSRS / SM-2 algorithm
-│       ├── syncService.ts     # Multi-device cloud sync engine
-│       ├── uuid.ts            # RFC 4122 v4 UUID generator & validator
-│       └── supabase.ts        # Supabase Client singleton
-├── supabase/
-│   └── complete_orbit_database.sql # Consolidated 1-click master schema
+│   ├── lib/               # Intelligence engines & sync utilities
+│   │   ├── academicState.ts   # Unified Academic Memory State
+│   │   ├── aiMentorContext.ts # Structured AI Mentor payload builder
+│   │   ├── curriculumData.ts  # Curriculum taxonomy & ID resolvers
+│   │   ├── db.ts              # Dexie.js IndexedDB schema ('OrbitStudyOS')
+│   │   ├── habitEngine.ts     # Temporal habit & slot analysis
+│   │   ├── planningEngine.ts  # Capacity & Fatigue Shield
+│   │   ├── spacedRepetition.ts# FSRS / SM-2 algorithm
+│   │   ├── syncService.ts     # Non-destructive cloud sync engine
+│   │   ├── telemetry.ts       # Slot drift & advance planning telemetry
+│   │   └── uuid.ts            # RFC 4122 v4 UUID generator & validator
+│   └── supabase/
+│       └── complete_orbit_database.sql # Master idempotent SQL schema
 └── public/                # Static assets, icons, manifest.json
 ```
 
 ---
 
 ## 📄 License
-MIT License. Built for dedicated STEM and Computer Science students.
+MIT License. Built for dedicated STEM and Computer Science scholars.
