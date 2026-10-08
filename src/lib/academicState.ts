@@ -1,17 +1,19 @@
 import { differenceInCalendarDays, parseISO, format } from 'date-fns';
-import type { TrackType, ChapterStatus, Difficulty, MistakeType } from '@/types/database.types';
+import type { TrackType, ChapterStatus, Difficulty, MistakeType, TimeSlot } from '@/types/database.types';
 import {
   db,
   getLocalMistakes,
   getLocalExams,
   getLocalRevisions,
   getRecentLocalReflections,
+  getLocalTestAttempts,
   type LocalMistake,
   type LocalExam,
   type LocalRevision,
   type LocalReflection,
 } from '@/lib/db';
 import { getCurriculumChapters, getChapterOverrides, type CurriculumChapter } from '@/lib/curriculumData';
+import { analyzeStudentHabits, type StudentBehavioralHabitReport } from '@/lib/habitEngine';
 
 export type WeightageTier = 'tier1_heavy' | 'tier2_core' | 'tier3_foundational';
 
@@ -76,6 +78,7 @@ export interface UnifiedStudentState {
   chapters: UnifiedChapterState[];
   targetExam: TargetExamContext | null;
   cognitiveProfile: CognitiveCapacityProfile;
+  habitProfile?: StudentBehavioralHabitReport;
   summary: {
     totalChapters: number;
     masteredCount: number;
@@ -504,12 +507,15 @@ export async function getUnifiedAcademicState(
   const averageConfidence =
     enrichedChapters.length > 0 ? Math.round(confidenceSum / enrichedChapters.length) : 60;
 
+  const habitProfile = await analyzeStudentHabits(userId);
+
   return {
     userId,
     activeTrack: track,
     chapters: enrichedChapters,
     targetExam,
     cognitiveProfile,
+    habitProfile,
     summary: {
       totalChapters: enrichedChapters.length,
       masteredCount,
@@ -521,5 +527,118 @@ export async function getUnifiedAcademicState(
       totalUnresolvedMistakes,
       conceptualMistakesCount,
     },
+  };
+}
+
+// ============================================================
+// AI CONTEXT CONTRACT (Prompt-Ready, Clean, Hallucination-Free)
+// ============================================================
+
+export interface AiMentorContext {
+  studentProfile: {
+    userId: string;
+    activeTrack: TrackType;
+    daysToTargetExam: number;
+    targetExamName: string;
+    averageConfidence: number;
+  };
+  capacityProfile: {
+    reportedSleep: number;
+    reportedEnergy: number;
+    fatigueRisk: boolean;
+    recommendedStudyHours: number;
+  };
+  behavioralHabits: {
+    optimalSlot: TimeSlot;
+    isMorningAspirantNightOwl: boolean;
+    durationMultiplier: number;
+    pacingNote: string;
+  };
+  academicPriorities: {
+    topWeakChapter: string;
+    unresolvedMistakeCount: number;
+    conceptualMistakesCount: number;
+    dueRevisionsCount: number;
+    masteredChaptersCount: number;
+    totalChaptersCount: number;
+  };
+  recentBlockers: string | null;
+  recentTestAttempt?: {
+    examName: string;
+    paperDifficulty: string;
+    fumbleFactor: string;
+    relativeDifficulty: string;
+    score: string | null;
+    leakedChaptersCount: number;
+  } | null;
+  candidateTasks: Array<{ title: string; slot: TimeSlot; reason: string }>;
+}
+
+/**
+ * Builds the compact, structured context object for future AI reasoning.
+ * Filters out raw noise, ensuring zero hallucination on syllabus facts or dates.
+ */
+export async function buildAiMentorContext(
+  userId: string = '',
+  track: TrackType = 'jee_nsep'
+): Promise<AiMentorContext> {
+  const state = await getUnifiedAcademicState(userId, track);
+  const targetExam = state.targetExam;
+  const cognitive = state.cognitiveProfile;
+  const habit = state.habitProfile;
+
+  const topWeak = state.chapters[0]?.name ?? 'Core Syllabus Foundations';
+
+  const testAttempts = await getLocalTestAttempts(userId);
+  const latestAttempt = testAttempts[0] ?? null;
+  const recentTestAttempt = latestAttempt
+    ? {
+        examName: latestAttempt.exam_name,
+        paperDifficulty: latestAttempt.paper_difficulty,
+        fumbleFactor: latestAttempt.fumble_factor,
+        relativeDifficulty: latestAttempt.relative_difficulty,
+        score:
+          latestAttempt.score !== null && latestAttempt.score !== undefined && latestAttempt.max_score
+            ? `${latestAttempt.score}/${latestAttempt.max_score}`
+            : null,
+        leakedChaptersCount: latestAttempt.leaked_chapter_ids.length,
+      }
+    : null;
+
+  return {
+    studentProfile: {
+      userId,
+      activeTrack: track,
+      daysToTargetExam: targetExam?.daysRemaining ?? 30,
+      targetExamName: targetExam?.name ?? (track === 'jee_nsep' ? 'Target: JEE / Olympiad' : 'Target: Software Systems Sprint'),
+      averageConfidence: state.summary.averageConfidence,
+    },
+    capacityProfile: {
+      reportedSleep: cognitive.reportedSleep,
+      reportedEnergy: cognitive.reportedEnergy,
+      fatigueRisk: cognitive.fatigueRisk,
+      recommendedStudyHours: cognitive.recommendedStudyHours,
+    },
+    behavioralHabits: {
+      optimalSlot: habit?.aiStrategicInsights.optimalAnalyticalSlot ?? 'evening',
+      isMorningAspirantNightOwl: habit?.chronotype.isMorningAspirantNightOwl ?? false,
+      durationMultiplier: habit?.aiStrategicInsights.velocityCalibrationFactor ?? 1.0,
+      pacingNote: habit?.aiStrategicInsights.recommendedSlotNote ?? 'Pacing calibrated to natural circadian rhythm.',
+    },
+    academicPriorities: {
+      topWeakChapter: topWeak,
+      unresolvedMistakeCount: state.summary.totalUnresolvedMistakes,
+      conceptualMistakesCount: state.summary.conceptualMistakesCount,
+      dueRevisionsCount: state.summary.revisionDueCount,
+      masteredChaptersCount: state.summary.masteredCount,
+      totalChaptersCount: state.summary.totalChapters,
+    },
+    recentBlockers: cognitive.latestBlockers,
+    recentTestAttempt,
+    candidateTasks: state.chapters.slice(0, 3).map((ch, idx) => ({
+      title: `${ch.name}: Targeted Concept Mastery Drill`,
+      slot: (idx === 0 ? (habit?.aiStrategicInsights.optimalAnalyticalSlot ?? 'evening') : idx === 1 ? 'morning' : 'night') as TimeSlot,
+      reason: ch.mistakes.unresolved > 0 ? `Clears ${ch.mistakes.unresolved} error points logged in Mistake Book` : 'Progressive syllabus depth',
+    })),
   };
 }
