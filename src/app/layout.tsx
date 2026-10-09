@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Sora, Manrope, IBM_Plex_Mono } from 'next/font/google';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
+import { NotificationPermissionModal } from '@/components/NotificationPermissionModal';
 import { BottomNav } from '@/components/BottomNav';
 import { AuthProvider } from '@/lib/supabase/AuthProvider';
 import './globals.css';
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AuthProvider>
           <ServiceWorkerRegister />
+          <NotificationPermissionModal />
           {children}
           <BottomNav />
         </AuthProvider>
