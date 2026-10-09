@@ -1,12 +1,4 @@
-// Orbit — minimal service worker.
-//
-// Deliberately does NOT cache API calls or app pages. Orbit's data changes
-// constantly (tasks, mistakes, revisions) and is per-user via Supabase auth,
-// so a stale-while-revalidate or cache-first strategy here would risk
-// showing one user's cached data to another on a shared device, or just
-// showing stale plans. This worker exists only so the app satisfies PWA
-// installability criteria (Chrome/Android "Add to Home Screen", iOS Safari
-// "Add to Home Screen") — everything still goes to the network.
+// Orbit — Academic Operating System Service Worker
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -16,4 +8,63 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// No fetch handler — all requests fall through to the network untouched.
+// Handle push notifications sent from server (e.g. Supabase Edge Function / Web Push)
+self.addEventListener('push', (event) => {
+  let data = {
+    title: 'Orbit · Check-in 🪐',
+    body: 'Stay in Orbit. Check your study schedule for today.',
+    url: '/planner',
+    tag: 'orbit-push',
+  };
+
+  try {
+    if (event.data) {
+      data = Object.assign(data, event.data.json());
+    }
+  } catch (e) {
+    if (event.data) {
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: '/icon.svg',
+    badge: '/favicon.svg',
+    tag: data.tag || 'orbit-notification',
+    sound: '/sounds/orbit-chime.wav',
+    data: {
+      url: data.url || '/planner',
+    },
+    actions: [
+      { action: 'open', title: 'Open Orbit' }
+    ]
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// Handle clicking on the notification banner
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url || '/planner';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Focus existing tab if open
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      // If no tab is open, launch a new window
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
