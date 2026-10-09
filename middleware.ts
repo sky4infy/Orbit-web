@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
@@ -12,12 +12,22 @@ export async function middleware(request: NextRequest) {
     supabaseKey,
     {
       cookies: {
-        get: (name: string) => request.cookies.get(name)?.value,
-        set: (name: string, value: string, options: CookieOptions) => {
-          response.cookies.set({ name, value, ...options });
+        getAll() {
+          return request.cookies.getAll();
         },
-        remove: (name: string, options: CookieOptions) => {
-          response.cookies.set({ name, value: '', ...options });
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set({
+              name,
+              value,
+              ...options,
+              maxAge: 60 * 60 * 24 * 365, // 1 year cookie persistence
+            })
+          );
         },
       },
     }
@@ -31,15 +41,23 @@ export async function middleware(request: NextRequest) {
     user = null;
   }
 
+  // Check if browser sent Supabase auth cookies
+  const allCookies = request.cookies.getAll();
+  const hasAuthCookies = allCookies.some(
+    (c) => c.name.includes('-auth-token') || c.name.startsWith('sb-')
+  );
+
   const protectedPaths = ['/planner', '/journey', '/week', '/mistakes', '/profile'];
   const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));
 
-  // If visitor is not authenticated and attempts to access protected routes, redirect to /login
-  if (!user && isProtected) {
+  // Only redirect if visitor has NO auth cookies whatsoever and no user session.
+  // If auth cookies exist (e.g. overnight sleep or expired access token), let the page load
+  // so the client-side Supabase client can seamlessly refresh the token with zero interruption.
+  if (!user && !hasAuthCookies && isProtected) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // If visitor is already authenticated and visits /login, redirect to /planner
+  // If visitor is already confirmed authenticated and visits /login, redirect to /planner
   if (user && request.nextUrl.pathname === '/login') {
     return NextResponse.redirect(new URL('/planner', request.url));
   }
