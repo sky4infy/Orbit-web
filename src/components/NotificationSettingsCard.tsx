@@ -21,6 +21,7 @@ import {
   setOrbitNotificationsEnabled,
   requestNotificationPermission,
   sendTestOrbitNotification,
+  dispatchOrbitNotification,
   getOrbitNotificationStatus,
   type NotificationStatus,
 } from '@/lib/notificationService';
@@ -89,6 +90,34 @@ export function NotificationSettingsCard({ userId }: Props) {
       setTestingNotification(false);
       await refreshStatus();
     }
+  }
+
+  async function handleSimulateMorning() {
+    if (status.permission !== 'granted') {
+      const granted = await requestNotificationPermission();
+      if (!granted) return;
+    }
+    await dispatchOrbitNotification('Orbit · Morning Orbit Check (7:30 AM)', {
+      body: "Your day isn't planned yet. Set your focus for today and stay in orbit.",
+      tag: 'orbit-730-sim-' + Date.now(),
+      url: '/planner',
+    });
+    setTestSent(true);
+    setTimeout(() => setTestSent(false), 4000);
+  }
+
+  async function handleSimulateNight() {
+    if (status.permission !== 'granted') {
+      const granted = await requestNotificationPermission();
+      if (!granted) return;
+    }
+    await dispatchOrbitNotification('Orbit · Evening Debrief (10:00 PM)', {
+      body: 'Time to close your loop. Log your wins, blockers, and energy rating for today.',
+      tag: 'orbit-2200-sim-' + Date.now(),
+      url: '/journey',
+    });
+    setTestSent(true);
+    setTimeout(() => setTestSent(false), 4000);
   }
 
   return (
@@ -165,6 +194,26 @@ export function NotificationSettingsCard({ userId }: Props) {
         >
           <Send size={13} className="text-paper/50" />
           <span>Test Notification</span>
+        </button>
+
+        {/* Simulate 7:30 AM Check */}
+        <button
+          onClick={handleSimulateMorning}
+          className="flex items-center gap-1.5 rounded-xl border border-amber/25 bg-amber/10 px-2.5 py-2 text-xs font-semibold text-amber hover:bg-amber/20 transition active:scale-95"
+          title="Simulate 7:30 AM alert"
+        >
+          <Sun size={13} />
+          <span>Simulate 7:30 AM</span>
+        </button>
+
+        {/* Simulate 10:00 PM Check */}
+        <button
+          onClick={handleSimulateNight}
+          className="flex items-center gap-1.5 rounded-xl border border-subject-physics/30 bg-subject-physics/10 px-2.5 py-2 text-xs font-semibold text-subject-physics hover:bg-subject-physics/20 transition active:scale-95"
+          title="Simulate 10:00 PM alert"
+        >
+          <Moon size={13} />
+          <span>Simulate 10:00 PM</span>
         </button>
       </div>
 
