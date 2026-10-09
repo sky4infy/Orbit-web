@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Square, X, Sparkles, Clock, CheckCircle2, RotateCcw } from 'lucide-react';
 import { startStudySession, endStudySession } from '@/api/study_sessions';
 import { closeTask, startTask, type TaskWithChapter } from '@/api/tasks';
+import { playOrbitChime } from '@/lib/orbitSound';
 
 interface Props {
   userId: string;
@@ -155,6 +156,7 @@ export function FocusTimerModal({ userId, task, open, onClose, onSessionEnded }:
           await closeTask(userId, task.id, 'completed', { actualMinutes: minutesSpent });
         }
       }
+      playOrbitChime().catch(() => {});
       setTimeout(() => {
         setIsFinishing(false);
         setSecondsElapsed(0);
