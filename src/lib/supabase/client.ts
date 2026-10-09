@@ -3,9 +3,6 @@
 import { createBrowserClient } from '@supabase/ssr';
 import type { Database } from '@/types/database.types';
 
-// Single shared client for the whole app. @supabase/ssr's browser client
-// persists the session in cookies (not localStorage) so it's readable by
-// server components/middleware too if you add SSR-protected routes later.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 
@@ -17,5 +14,17 @@ export const isSupabaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY !== 'placeholder-anon-key'
 );
 
-export const supabase = createBrowserClient<Database>(supabaseUrl, supabaseKey);
-
+// Single shared browser client with persistent 1-year cookies and auto-token-refresh
+// to prevent premature logout on mobile PWAs and after overnight sleep.
+export const supabase = createBrowserClient<Database>(supabaseUrl, supabaseKey, {
+  cookieOptions: {
+    maxAge: 60 * 60 * 24 * 365, // 1 year cookie persistence (prevents session eviction)
+    sameSite: 'lax',
+    secure: typeof window !== 'undefined' && window.location.protocol === 'https:',
+  },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
