@@ -22,6 +22,7 @@ import { NextMissionCard } from '@/components/NextMissionCard';
 import { SlotAccordion } from '@/components/SlotAccordion';
 import { MissedTasksVault } from '@/components/MissedTasksVault';
 import { AddTaskModal } from '@/components/AddTaskModal';
+import { DailyRhythmBanner } from '@/components/DailyRhythmBanner';
 import { EditTaskModal } from '@/components/EditTaskModal';
 import { UndoToast, type ToastState } from '@/components/UndoToast';
 import { DailyReflectionModal } from '@/components/DailyReflectionModal';
@@ -601,6 +602,13 @@ export default function PlannerPage() {
           </button>
         </div>
       </header>
+
+      {/* Daily Rhythm Checkpoint Banner (Morning 7:30/9:00 AM & Night 10:00 PM) */}
+      <DailyRhythmBanner
+        userId={userId ?? undefined}
+        onOpenReflection={() => setReflectionOpen(true)}
+        onOpenAddTask={() => setAddTaskOpen(true)}
+      />
 
       {loading ? (
         <div className="flex items-center justify-center py-20 text-sm text-paper/40">
