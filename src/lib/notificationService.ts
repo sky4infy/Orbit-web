@@ -40,13 +40,14 @@ export function getNotificationPermission(): NotificationPermission | 'unsupport
 }
 
 /**
- * Check if user enabled Orbit notifications in settings
+ * Check if user enabled Orbit notifications in settings.
+ * Defaults to TRUE if the browser already granted permission!
  */
 export function areOrbitNotificationsEnabled(): boolean {
   if (typeof window === 'undefined') return false;
   const saved = localStorage.getItem(SETTINGS_KEY);
-  if (saved === null) return false;
-  return saved === 'true';
+  if (saved !== null) return saved === 'true';
+  return 'Notification' in window && Notification.permission === 'granted';
 }
 
 /**
@@ -91,7 +92,7 @@ export async function dispatchOrbitNotification(
   // 1. Play Orbit's signature chime sound
   playOrbitChime().catch(() => {});
 
-  // 2. Dispatch system notification (Service Worker if registered, else window Notification)
+  // 2. Dispatch system notification (Service Worker if ready, fallback to window.Notification)
   try {
     const notifOptions: NotificationOptions = {
       body: options.body,
@@ -100,19 +101,27 @@ export async function dispatchOrbitNotification(
       tag: options.tag,
       requireInteraction: options.requireInteraction ?? false,
       data: { url: options.url || '/' },
-      // The 'sound' attribute is part of the W3C spec; browsers that support it will use our custom asset:
+      // W3C spec sound attribute
       ...( { sound: '/sounds/orbit-chime.wav' } as any ),
     };
 
+    let swShown = false;
     if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg && 'showNotification' in reg) {
-        await reg.showNotification(title, notifOptions);
-        return;
+      try {
+        const reg = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('sw timeout')), 600)),
+        ]);
+        if (reg && 'showNotification' in reg) {
+          await reg.showNotification(title, notifOptions);
+          swShown = true;
+        }
+      } catch {
+        // Service worker took too long or isn't active, fallback to new Notification
       }
     }
 
-    if (Notification.permission === 'granted') {
+    if (!swShown && Notification.permission === 'granted') {
       const n = new Notification(title, notifOptions);
       n.onclick = () => {
         window.focus();
@@ -173,23 +182,45 @@ export async function checkTodayReflected(userId: string): Promise<boolean> {
 }
 
 /**
+ * Resolves effective user ID from argument or localStorage cached session
+ */
+function resolveEffectiveUserId(userId?: string): string | null {
+  if (userId) return userId;
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = localStorage.getItem('orbit_cached_user');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed?.id) return parsed.id;
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Evaluates the 3 checkpoints (7:30 AM, 9:00 AM, 10:00 PM) for right now
  */
-export async function evaluateCheckpointsNow(userId?: string): Promise<void> {
-  if (!areOrbitNotificationsEnabled() || Notification.permission !== 'granted') return;
+export async function evaluateCheckpointsNow(userId?: string): Promise<{
+  triggered: 'morning_730' | 'morning_900' | 'night_2200' | null;
+  reason?: string;
+}> {
+  if (!areOrbitNotificationsEnabled() || Notification.permission !== 'granted') {
+    return { triggered: null, reason: 'notifications_disabled_or_not_granted' };
+  }
 
+  const effectiveUid = resolveEffectiveUserId(userId);
   const now = new Date();
   const todayStr = format(now, 'yyyy-MM-dd');
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
   const totalMinutes = currentHour * 60 + currentMinute;
 
-  // Window 1: 7:30 AM (between 7:30 and 8:50 AM)
-  const isMorning730Window = totalMinutes >= 7 * 60 + 30 && totalMinutes < 8 * 60 + 50;
+  // Window 1: 7:30 AM (between 7:30 and 8:59 AM)
+  const isMorning730Window = totalMinutes >= 7 * 60 + 30 && totalMinutes < 9 * 60;
   if (isMorning730Window) {
     const lastSent = localStorage.getItem(LAST_730_KEY);
     if (lastSent !== todayStr) {
-      const { planned, count } = await checkTodayPlanned(userId);
+      const { planned, count } = await checkTodayPlanned(effectiveUid ?? undefined);
       if (!planned) {
         localStorage.setItem(LAST_730_KEY, todayStr);
         await dispatchOrbitNotification('Orbit · Morning Orbit Check (7:30 AM)', {
@@ -197,16 +228,17 @@ export async function evaluateCheckpointsNow(userId?: string): Promise<void> {
           tag: `orbit-730-${todayStr}`,
           url: '/planner',
         });
+        return { triggered: 'morning_730' };
       }
     }
   }
 
-  // Window 2: 9:00 AM (between 9:00 and 11:30 AM)
-  const isMorning900Window = totalMinutes >= 9 * 60 && totalMinutes < 11 * 60 + 30;
+  // Window 2: 9:00 AM (between 9:00 and 12:00 PM)
+  const isMorning900Window = totalMinutes >= 9 * 60 && totalMinutes < 12 * 60;
   if (isMorning900Window) {
     const lastSent = localStorage.getItem(LAST_900_KEY);
     if (lastSent !== todayStr) {
-      const { planned, count } = await checkTodayPlanned(userId);
+      const { planned, count } = await checkTodayPlanned(effectiveUid ?? undefined);
       if (!planned) {
         localStorage.setItem(LAST_900_KEY, todayStr);
         await dispatchOrbitNotification('Orbit · Final Morning Call (9:00 AM)', {
@@ -214,16 +246,17 @@ export async function evaluateCheckpointsNow(userId?: string): Promise<void> {
           tag: `orbit-900-${todayStr}`,
           url: '/planner',
         });
+        return { triggered: 'morning_900' };
       }
     }
   }
 
-  // Window 3: 10:00 PM (between 22:00 and 23:59 PM)
+  // Window 3: 10:00 PM (from 22:00 through midnight)
   const isNight2200Window = totalMinutes >= 22 * 60;
-  if (isNight2200Window && userId) {
+  if (isNight2200Window) {
     const lastSent = localStorage.getItem(LAST_2200_KEY);
     if (lastSent !== todayStr) {
-      const hasReflected = await checkTodayReflected(userId);
+      const hasReflected = effectiveUid ? await checkTodayReflected(effectiveUid) : false;
       if (!hasReflected) {
         localStorage.setItem(LAST_2200_KEY, todayStr);
         await dispatchOrbitNotification('Orbit · Evening Debrief (10:00 PM)', {
@@ -231,9 +264,12 @@ export async function evaluateCheckpointsNow(userId?: string): Promise<void> {
           tag: `orbit-2200-${todayStr}`,
           url: '/journey',
         });
+        return { triggered: 'night_2200' };
       }
     }
   }
+
+  return { triggered: null, reason: 'criteria_not_met_or_already_sent' };
 }
 
 /**
@@ -263,53 +299,51 @@ export function initOrbitNotificationScheduler(userId?: string): () => void {
   if (schedulerTimer2200) clearTimeout(schedulerTimer2200);
   if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-  if (!areOrbitNotificationsEnabled() || Notification.permission !== 'granted') {
-    return () => {};
-  }
-
-  // 1. Immediate check in case we just woke up inside a checkpoint window
+  // Run immediate checkpoint check
   evaluateCheckpointsNow(userId);
 
-  // 2. Schedule precise timer for 7:30 AM
+  // Schedule precise timer for 7:30 AM
   const ms730 = getMsUntilTime(7, 30);
   schedulerTimer730 = setTimeout(() => {
     evaluateCheckpointsNow(userId);
-    // Recurring daily
     schedulerTimer730 = setInterval(() => evaluateCheckpointsNow(userId), 24 * 60 * 60 * 1000);
   }, ms730);
 
-  // 3. Schedule precise timer for 9:00 AM
+  // Schedule precise timer for 9:00 AM
   const ms900 = getMsUntilTime(9, 0);
   schedulerTimer900 = setTimeout(() => {
     evaluateCheckpointsNow(userId);
     schedulerTimer900 = setInterval(() => evaluateCheckpointsNow(userId), 24 * 60 * 60 * 1000);
   }, ms900);
 
-  // 4. Schedule precise timer for 10:00 PM (22:00)
+  // Schedule precise timer for 10:00 PM (22:00)
   const ms2200 = getMsUntilTime(22, 0);
   schedulerTimer2200 = setTimeout(() => {
     evaluateCheckpointsNow(userId);
     schedulerTimer2200 = setInterval(() => evaluateCheckpointsNow(userId), 24 * 60 * 60 * 1000);
   }, ms2200);
 
-  // 5. Heartbeat check every 5 minutes and on window focus/visibility change
+  // Heartbeat check every 2 minutes and whenever user unlocks phone or switches back to tab
   heartbeatInterval = setInterval(() => {
     evaluateCheckpointsNow(userId);
-  }, 5 * 60 * 1000);
+  }, 2 * 60 * 1000);
 
-  const onVisibility = () => {
+  const onWakeOrFocus = () => {
     if (document.visibilityState === 'visible') {
       evaluateCheckpointsNow(userId);
     }
   };
-  document.addEventListener('visibilitychange', onVisibility);
+
+  window.addEventListener('focus', onWakeOrFocus);
+  document.addEventListener('visibilitychange', onWakeOrFocus);
 
   return () => {
     if (schedulerTimer730) clearTimeout(schedulerTimer730);
     if (schedulerTimer900) clearTimeout(schedulerTimer900);
     if (schedulerTimer2200) clearTimeout(schedulerTimer2200);
     if (heartbeatInterval) clearInterval(heartbeatInterval);
-    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('focus', onWakeOrFocus);
+    document.removeEventListener('visibilitychange', onWakeOrFocus);
   };
 }
 
@@ -320,8 +354,9 @@ export async function getOrbitNotificationStatus(userId?: string): Promise<Notif
   const supported = isNotificationSupported();
   const permission = getNotificationPermission();
   const enabled = areOrbitNotificationsEnabled();
-  const { planned, count } = await checkTodayPlanned(userId);
-  const reflected = userId ? await checkTodayReflected(userId) : false;
+  const effectiveUid = resolveEffectiveUserId(userId);
+  const { planned, count } = await checkTodayPlanned(effectiveUid ?? undefined);
+  const reflected = effectiveUid ? await checkTodayReflected(effectiveUid) : false;
 
   return {
     supported,
