@@ -6,6 +6,11 @@ import { Eye, EyeOff } from 'lucide-react';
 import { OrbitLogo } from '@/components/OrbitLogo';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import type { TrackType } from '@/types/database.types';
+import {
+  isNotificationSupported,
+  getNotificationPermission,
+  requestNotificationPermission,
+} from '@/lib/notificationService';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -50,6 +55,12 @@ export default function LoginPage() {
         localStorage.setItem('orbit_active_track', focusTrack);
 
         if (data.session) {
+          sessionStorage.removeItem('orbit_notif_modal_dismissed');
+          if (isNotificationSupported() && getNotificationPermission() === 'default') {
+            try {
+              await requestNotificationPermission();
+            } catch {}
+          }
           router.push('/planner');
           router.refresh();
         } else {
@@ -63,6 +74,13 @@ export default function LoginPage() {
         const userTrack = data.user?.user_metadata?.track;
         if (userTrack) {
           localStorage.setItem('orbit_active_track', userTrack);
+        }
+
+        sessionStorage.removeItem('orbit_notif_modal_dismissed');
+        if (isNotificationSupported() && getNotificationPermission() === 'default') {
+          try {
+            await requestNotificationPermission();
+          } catch {}
         }
 
         router.push('/planner');
