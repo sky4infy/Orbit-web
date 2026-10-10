@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Layers } from 'lucide-react';
 import { createExam } from '@/api/exams';
@@ -38,6 +38,8 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const userManuallyPickedSubject = useRef(false);
+
   // Group chapters by subject
   const bySubject = useMemo(() => {
     const grouped: Record<string, ChapterOverview[]> = {};
@@ -52,24 +54,36 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
     return Object.keys(bySubject);
   }, [bySubject]);
 
-  // Set default active tab when selected subjects change
-  useEffect(() => {
-    if (selectedSubjects.size > 0) {
-      const currentArr = Array.from(selectedSubjects);
-      if (!selectedSubjects.has(activeSubjectTab)) {
-        setActiveSubjectTab(currentArr[0]);
-      }
-    } else {
-      setActiveSubjectTab('');
+  // Derive the active subject: MUST be in selectedSubjects
+  const currentSub = useMemo(() => {
+    if (selectedSubjects.size === 0) return '';
+    if (activeSubjectTab && selectedSubjects.has(activeSubjectTab)) {
+      return activeSubjectTab;
     }
+    return Array.from(selectedSubjects)[0] || '';
   }, [selectedSubjects, activeSubjectTab]);
 
-  // Auto-detect subject if user types a known subject name (e.g. "COA", "Operating Systems", "Physics")
   useEffect(() => {
-    if (!name.trim() || selectedSubjects.size > 0) return;
-    const lower = name.toLowerCase();
+    if (open) {
+      userManuallyPickedSubject.current = false;
+    }
+  }, [open]);
+
+  // Auto-detect subject only on high-confidence match from typed test name
+  useEffect(() => {
+    if (userManuallyPickedSubject.current || selectedSubjects.size > 0) return;
+    const trimmed = name.trim().toLowerCase();
+    if (trimmed.length < 2) return;
+
     for (const sub of availableSubjects) {
-      if (lower.includes(sub.toLowerCase()) || sub.toLowerCase().includes(lower)) {
+      const cleanSub = sub.toLowerCase();
+      // Match if test name contains the subject or prominent word tokens
+      const words = cleanSub.split(/[\s&/_-]+/).filter((w) => w.length >= 3 && w !== 'college' && w !== 'subject');
+      const nameWords = trimmed.split(/[\s&/_-]+/);
+      const hasExactWord = words.some((w) => nameWords.includes(w));
+      const isSubInName = trimmed.includes(cleanSub);
+
+      if (isSubInName || hasExactWord) {
         setSelectedSubjects(new Set([sub]));
         setActiveSubjectTab(sub);
         break;
@@ -79,6 +93,7 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
 
   // Toggle subject selection
   function toggleSubject(sub: string) {
+    userManuallyPickedSubject.current = true;
     setSelectedSubjects((prev) => {
       const next = new Set(prev);
       if (next.has(sub)) {
@@ -91,8 +106,13 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
           chapsToRemove.forEach((id) => updated.delete(id));
           return updated;
         });
+        if (activeSubjectTab === sub) {
+          const remaining = Array.from(next);
+          setActiveSubjectTab(remaining[0] || '');
+        }
       } else {
         next.add(sub);
+        setActiveSubjectTab(sub);
       }
       return next;
     });
@@ -238,19 +258,46 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
                 <div className="flex flex-wrap gap-1.5">
                   {availableSubjects.map((sub) => {
                     const isSel = selectedSubjects.has(sub);
+                    const isActive = isSel && currentSub === sub;
                     return (
                       <button
                         key={sub}
                         type="button"
-                        onClick={() => toggleSubject(sub)}
-                        className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
-                          isSel
-                            ? 'bg-amber text-ink font-semibold shadow-sm'
+                        onClick={() => {
+                          if (!isSel) {
+                            toggleSubject(sub);
+                          } else if (isActive) {
+                            toggleSubject(sub);
+                          } else {
+                            setActiveSubjectTab(sub);
+                          }
+                        }}
+                        className={`group flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                          isActive
+                            ? 'bg-amber text-ink font-semibold shadow-sm ring-1 ring-amber/50'
+                            : isSel
+                            ? 'bg-amber/20 border border-amber/40 text-amber font-medium hover:bg-amber/30'
                             : 'border border-white/10 bg-ink text-paper/60 hover:text-paper hover:bg-white/5'
                         }`}
                       >
-                        {isSel ? '✓ ' : '+ '}
-                        {sub}
+                        <span>{isSel ? '✓ ' : '+ '}</span>
+                        <span>{sub}</span>
+                        {isSel && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSubject(sub);
+                            }}
+                            className={`ml-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[10px] leading-none transition ${
+                              isActive
+                                ? 'bg-ink/20 text-ink hover:bg-ink/40'
+                                : 'bg-amber/20 text-amber hover:bg-amber/40'
+                            }`}
+                            title="Remove subject"
+                          >
+                            ✕
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -258,13 +305,13 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
               </div>
 
               {/* Step 2: Choose Chapters for the Selected Subject(s) */}
-              {selectedSubjects.size > 0 && (
+              {selectedSubjects.size > 0 && currentSub && (
                 <div className="rounded-2xl border border-white/10 bg-ink/60 p-3.5 space-y-3">
                   {/* Subject Tabs if Multiple Subjects are Selected */}
                   {selectedSubjects.size > 1 && (
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-white/5">
                       {Array.from(selectedSubjects).map((sub) => {
-                        const isTabActive = activeSubjectTab === sub;
+                        const isTabActive = currentSub === sub;
                         const subChaps = bySubject[sub] || [];
                         const countSelected = subChaps.filter((c) => selectedChapters.has(c.id)).length;
                         return (
@@ -274,7 +321,7 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
                             onClick={() => setActiveSubjectTab(sub)}
                             className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-semibold transition ${
                               isTabActive
-                                ? 'bg-amber text-ink'
+                                ? 'bg-amber text-ink shadow-sm'
                                 : 'bg-white/5 text-paper/60 hover:text-paper'
                             }`}
                           >
@@ -294,8 +341,6 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
 
                   {/* Active Subject Chapter List */}
                   {(() => {
-                    const currentSub = activeSubjectTab || Array.from(selectedSubjects)[0];
-                    if (!currentSub) return null;
                     const subChapters = bySubject[currentSub] || [];
                     const countInSub = subChapters.filter((c) => selectedChapters.has(c.id)).length;
 
@@ -324,29 +369,35 @@ export function AddExamModal({ userId, chapters, open, onClose, onCreated }: Pro
                           </div>
                         </div>
 
-                        <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-                          {subChapters.map((c) => {
-                            const isChecked = selectedChapters.has(c.id);
-                            return (
-                              <label
-                                key={c.id}
-                                className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs cursor-pointer transition ${
-                                  isChecked
-                                    ? 'bg-amber/10 border border-amber/20 text-paper'
-                                    : 'border border-white/5 bg-white/[0.02] text-paper/70 hover:bg-white/5'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => toggleChapter(c.id)}
-                                  className="accent-amber rounded h-4 w-4"
-                                />
-                                <span className="truncate">{c.name}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
+                        {subChapters.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-paper/40">
+                            No syllabus chapters registered for this subject.
+                          </div>
+                        ) : (
+                          <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                            {subChapters.map((c) => {
+                              const isChecked = selectedChapters.has(c.id);
+                              return (
+                                <label
+                                  key={c.id}
+                                  className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs cursor-pointer transition ${
+                                    isChecked
+                                      ? 'bg-amber/10 border border-amber/20 text-paper'
+                                      : 'border border-white/5 bg-white/[0.02] text-paper/70 hover:bg-white/5'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => toggleChapter(c.id)}
+                                    className="accent-amber rounded h-4 w-4"
+                                  />
+                                  <span className="truncate">{c.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
