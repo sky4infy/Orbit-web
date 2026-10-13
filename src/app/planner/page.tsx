@@ -263,17 +263,17 @@ export default function PlannerPage() {
   };
 
   async function refreshGamification() {
-    if (!userId) return;
-    const [streakCount, levelInfo] = await Promise.all([getStreak(userId), getLevelInfo(userId)]);
+    const effectiveUid = userId || 'local-user';
+    const [streakCount, levelInfo] = await Promise.all([getStreak(effectiveUid), getLevelInfo(effectiveUid)]);
     setStreak(streakCount);
     setLevel(levelInfo);
   }
 
   async function markDone(task: TaskWithChapter) {
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'completed' } : t)));
-    if (!userId) return;
+    const effectiveUid = userId || 'local-user';
     try {
-      await closeTask(userId, task.id, 'completed');
+      await closeTask(effectiveUid, task.id, 'completed');
       await refreshGamification();
 
       const isTest = /test|mock|paper|exam|quiz|midsem|pyq/i.test(task.title);

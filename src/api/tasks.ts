@@ -391,8 +391,30 @@ export async function closeTask(
     slot_drift: status === 'completed' ? slotDriftInfo.slot_drift : null,
   };
 
-  // Instant local update in IndexedDB
-  await updateLocalTask(taskId, updates);
+  if (!existingTask && typeof window !== 'undefined') {
+    await saveLocalTask({
+      id: taskId,
+      user_id: userId || 'local-user',
+      chapter_id: 'ef4adc05-e61b-4d6f-aa28-15271dcb0b03',
+      title: 'Study Mission',
+      scheduled_date: scheduledDate,
+      time_slot: scheduledSlot,
+      effort_level: 'medium',
+      priority: 2,
+      position: 0,
+      status,
+      incomplete_reason: status === 'completed' ? null : opts.incompleteReason ?? null,
+      estimated_minutes: estimatedMin,
+      actual_minutes: actualMin,
+      created_at: now.toISOString(),
+      completed_at: status === 'completed' ? now.toISOString() : null,
+      completed_slot: status === 'completed' ? completedSlot : null,
+      slot_drift: status === 'completed' ? slotDriftInfo.slot_drift : null,
+    });
+  } else {
+    // Instant local update in IndexedDB
+    await updateLocalTask(taskId, updates);
+  }
 
   // Await cloud sync so other tabs see the completed / closed status immediately
   if (userId && userId !== 'local-user') {

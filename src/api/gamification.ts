@@ -40,9 +40,10 @@ export async function getStreak(userId?: string, lookbackDays = 60): Promise<num
   // 1b. Query secondary local study activities (spaced revisions & exam attempts)
   try {
     if (typeof window !== 'undefined' && db?.revisions) {
-      const localRevs = await db.revisions.where('review_count').above(0).toArray();
+      // Use toArray() + filter because review_count is not an indexed key in Dexie
+      const localRevs = await db.revisions.toArray();
       for (const r of localRevs) {
-        if (r.last_reviewed_at) {
+        if (r.review_count > 0 && r.last_reviewed_at) {
           try {
             const rDay = format(new Date(r.last_reviewed_at), 'yyyy-MM-dd');
             if (rDay >= since) daysWithCompletion.add(rDay);
@@ -56,23 +57,87 @@ export async function getStreak(userId?: string, lookbackDays = 60): Promise<num
         if (ta.attempt_date && ta.attempt_date >= since) {
           daysWithCompletion.add(ta.attempt_date);
         }
+        if (ta.created_at) {
+          try {
+            const taDay = format(new Date(ta.created_at), 'yyyy-MM-dd');
+            if (taDay >= since) daysWithCompletion.add(taDay);
+          } catch {}
+        }
       }
     }
   } catch (err) {
     console.warn('Failed reading secondary local study items for streak:', err);
   }
 
+  // 1c. Query daily reflections and study events
+  try {
+    if (typeof window !== 'undefined' && db?.reflections) {
+      const localReflections = await db.reflections.toArray();
+      for (const ref of localReflections) {
+        if (ref.day && ref.day >= since) {
+          daysWithCompletion.add(ref.day);
+        }
+        if (ref.created_at) {
+          try {
+            const refDay = format(new Date(ref.created_at), 'yyyy-MM-dd');
+            if (refDay >= since) daysWithCompletion.add(refDay);
+          } catch {}
+        }
+      }
+    }
+
+    if (typeof window !== 'undefined' && db?.events) {
+      const studyEvents = new Set([
+        'task_completed',
+        'revision_completed',
+        'reflection_submitted',
+        'study_session_ended',
+        'test_attempt_logged',
+      ]);
+      const localEvents = await db.events.toArray();
+      for (const ev of localEvents) {
+        if (studyEvents.has(ev.event_type) && ev.created_at) {
+          try {
+            const evDay = format(new Date(ev.created_at), 'yyyy-MM-dd');
+            if (evDay >= since) daysWithCompletion.add(evDay);
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed reading reflections or events for streak:', err);
+  }
+
   // 2. Query Supabase cloud (cross-device sync)
   if (userId && userId !== 'local-user') {
     try {
-      const { data, error } = await supabase
+      const cloudTaskPromise = supabase
         .from('task')
         .select('scheduled_date, completed_at, status')
         .eq('user_id', userId)
         .eq('status', 'completed');
 
-      if (!error && data) {
-        const rows = data as unknown as { scheduled_date: string; completed_at: string | null; status: string }[];
+      const cloudRevPromise = supabase
+        .from('revision')
+        .select('last_reviewed_at')
+        .eq('user_id', userId)
+        .not('last_reviewed_at', 'is', null);
+
+      const cloudEventsPromise = supabase
+        .from('event_log')
+        .select('created_at, event_type')
+        .eq('user_id', userId)
+        .in('event_type', ['task_completed', 'revision_completed', 'reflection_submitted', 'study_session_ended', 'test_attempt_logged'])
+        .gte('created_at', `${since}T00:00:00.000Z`);
+
+      const [taskRes, revRes, eventRes] = await Promise.allSettled([
+        cloudTaskPromise,
+        cloudRevPromise,
+        cloudEventsPromise,
+      ]);
+
+      if (taskRes.status === 'fulfilled' && taskRes.value?.data) {
+        const rows = taskRes.value.data as unknown as { scheduled_date: string; completed_at: string | null; status: string }[];
         for (const r of rows) {
           if (r.scheduled_date && r.scheduled_date >= since) {
             daysWithCompletion.add(r.scheduled_date);
@@ -85,8 +150,30 @@ export async function getStreak(userId?: string, lookbackDays = 60): Promise<num
           }
         }
       }
+
+      if (revRes.status === 'fulfilled' && revRes.value?.data) {
+        for (const r of revRes.value.data as unknown as { last_reviewed_at: string | null }[]) {
+          if (r.last_reviewed_at) {
+            try {
+              const rDay = format(new Date(r.last_reviewed_at), 'yyyy-MM-dd');
+              if (rDay >= since) daysWithCompletion.add(rDay);
+            } catch {}
+          }
+        }
+      }
+
+      if (eventRes.status === 'fulfilled' && eventRes.value?.data) {
+        for (const ev of eventRes.value.data as unknown as { created_at: string }[]) {
+          if (ev.created_at) {
+            try {
+              const evDay = format(new Date(ev.created_at), 'yyyy-MM-dd');
+              if (evDay >= since) daysWithCompletion.add(evDay);
+            } catch {}
+          }
+        }
+      }
     } catch (err) {
-      console.warn('Failed querying cloud tasks for streak:', err);
+      console.warn('Failed querying cloud study activities for streak:', err);
     }
   }
 
