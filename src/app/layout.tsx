@@ -6,9 +6,9 @@ import { BottomNav } from '@/components/BottomNav';
 import { AuthProvider } from '@/lib/supabase/AuthProvider';
 import './globals.css';
 
-const sora = Sora({ subsets: ['latin'], variable: '--font-sora', weight: ['500', '600'] });
-const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope' });
-const mono = IBM_Plex_Mono({ subsets: ['latin'], variable: '--font-mono', weight: ['400', '500'] });
+const sora = Sora({ subsets: ['latin'], variable: '--font-sora', weight: ['500', '600'], display: 'swap' });
+const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope', display: 'swap' });
+const mono = IBM_Plex_Mono({ subsets: ['latin'], variable: '--font-mono', weight: ['400', '500'], display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Orbit — Study Planner',
