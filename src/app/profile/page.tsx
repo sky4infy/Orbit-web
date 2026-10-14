@@ -10,6 +10,7 @@ import type { TrackType } from '@/types/database.types';
 import { Sparkles, Code2, Check, User, Users, Flame, Trophy, Shield, LogOut, Database, Download, Upload } from 'lucide-react';
 import { getOrbitStats, exportOrbitBackupJSON, importOrbitBackupJSON } from '@/lib/db';
 import { subscribeDataChanged, notifyDataChanged } from '@/lib/syncEvents';
+import { NotificationSettingsCard } from '@/components/NotificationSettingsCard';
 
 function withTimeout<T>(promise: Promise<T>, ms = 800): Promise<T> {
   return Promise.race([
@@ -230,6 +231,9 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
+
+      {/* Orbit Notifications & Daily Rhythm Settings */}
+      <NotificationSettingsCard userId={userId ?? undefined} />
 
       {/* Study Partner & Accountability Circle */}
       <section className="mb-6 rounded-3xl border border-white/10 bg-ink-50 p-5">
