@@ -11,7 +11,11 @@ import {
   Moon,
   Sparkles,
   Send,
-  ShieldCheck,
+  Cloud,
+  Radio,
+  Smartphone,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { playOrbitChime } from '@/lib/orbitSound';
 import {
@@ -23,6 +27,9 @@ import {
   sendTestOrbitNotification,
   dispatchOrbitNotification,
   getOrbitNotificationStatus,
+  subscribeToWebPush,
+  unsubscribeFromWebPush,
+  sendTestWebPush,
   type NotificationStatus,
 } from '@/lib/notificationService';
 
@@ -38,10 +45,15 @@ export function NotificationSettingsCard({ userId }: Props) {
     todayPlanned: false,
     todayReflected: false,
     taskCountToday: 0,
+    pushSupported: false,
+    pushSubscribed: false,
   });
   const [playingAudio, setPlayingAudio] = useState(false);
   const [testingNotification, setTestingNotification] = useState(false);
+  const [testingCloudPush, setTestingCloudPush] = useState(false);
+  const [togglingPush, setTogglingPush] = useState(false);
   const [testSent, setTestSent] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   async function refreshStatus() {
     const s = await getOrbitNotificationStatus(userId);
@@ -76,6 +88,27 @@ export function NotificationSettingsCard({ userId }: Props) {
     await refreshStatus();
   }
 
+  async function handleToggleCloudPush() {
+    setTogglingPush(true);
+    try {
+      if (status.pushSubscribed) {
+        await unsubscribeFromWebPush(userId);
+        setFeedbackMsg('Cloud Web Push disconnected for this browser.');
+      } else {
+        const res = await subscribeToWebPush(userId);
+        if (res.success) {
+          setFeedbackMsg('Device subscribed! Background alerts will wake your device when closed.');
+        } else {
+          setFeedbackMsg(res.error || 'Failed to connect device to cloud push.');
+        }
+      }
+    } finally {
+      setTogglingPush(false);
+      await refreshStatus();
+      setTimeout(() => setFeedbackMsg(null), 5000);
+    }
+  }
+
   async function handleTestNotification() {
     if (status.permission !== 'granted') {
       const granted = await requestNotificationPermission();
@@ -88,6 +121,26 @@ export function NotificationSettingsCard({ userId }: Props) {
       setTimeout(() => setTestSent(false), 4000);
     } finally {
       setTestingNotification(false);
+      await refreshStatus();
+    }
+  }
+
+  async function handleTestCloudPush() {
+    setTestingCloudPush(true);
+    try {
+      const res = await sendTestWebPush(userId);
+      if (res.success) {
+        setTestSent(true);
+        setFeedbackMsg('Cloud push transmitted from server! Check your device banner.');
+        setTimeout(() => {
+          setTestSent(false);
+          setFeedbackMsg(null);
+        }, 5000);
+      } else {
+        alert(res.error || 'Failed to trigger cloud push.');
+      }
+    } finally {
+      setTestingCloudPush(false);
       await refreshStatus();
     }
   }
@@ -150,8 +203,78 @@ export function NotificationSettingsCard({ userId }: Props) {
       </div>
 
       <p className="text-xs text-paper/60 leading-relaxed mt-2 mb-4">
-        Orbit protects your focus with a distinctive acoustic signature. You are never spammed: morning alerts only fire if your day hasn&apos;t been planned yet, and night alerts prompt you to reflect and lock in your recovery.
+        Orbit protects your focus with a distinctive acoustic signature. Morning alerts only fire if your day hasn&apos;t been planned yet, and night alerts prompt you to reflect and lock in your recovery.
       </p>
+
+      {/* Cloud Push Device Pairing Banner */}
+      <div className="mb-4 rounded-2xl border border-white/10 bg-ink/60 p-4">
+        <div className="flex items-start justify-between gap-3 mb-2.5">
+          <div className="flex items-center gap-2">
+            <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${
+              status.pushSubscribed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-paper/50'
+            }`}>
+              <Radio size={13} className={status.pushSubscribed ? 'animate-pulse' : ''} />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-paper">Cloud Web Push (Closed-App Alerts)</span>
+                {status.pushSubscribed ? (
+                  <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-mono">
+                    <CheckCircle2 size={11} /> Connected
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-paper/40 font-mono">Not Connected</span>
+                )}
+              </div>
+              <p className="text-[11px] text-paper/50 mt-0.5">
+                {status.pushSubscribed
+                  ? 'This device is paired with the Orbit server. Checkpoints will trigger even when the app is shut down.'
+                  : 'Pair this device to receive 7:30 AM, 9:00 AM, and 10:00 PM check-ins when Orbit is closed.'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/5">
+          <button
+            onClick={handleToggleCloudPush}
+            disabled={togglingPush}
+            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
+              status.pushSubscribed
+                ? 'border border-white/10 bg-white/5 text-paper/60 hover:text-rust hover:border-rust/30 hover:bg-rust/10'
+                : 'border border-amber/30 bg-amber/20 text-amber hover:bg-amber/30'
+            }`}
+          >
+            <Smartphone size={13} />
+            <span>
+              {togglingPush
+                ? 'Configuring…'
+                : status.pushSubscribed
+                ? 'Disconnect Device'
+                : 'Connect This Device for Closed-App Alerts'}
+            </span>
+          </button>
+
+          {status.pushSubscribed && (
+            <button
+              onClick={handleTestCloudPush}
+              disabled={testingCloudPush}
+              className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition active:scale-95"
+              title="Test a real server-to-device push notification"
+            >
+              <Cloud size={13} />
+              <span>{testingCloudPush ? 'Sending Server Push…' : 'Test Cloud Push'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {feedbackMsg && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber/30 bg-amber/10 px-3 py-2 text-xs text-amber">
+          <Sparkles size={14} className="shrink-0" />
+          <span>{feedbackMsg}</span>
+        </div>
+      )}
 
       {/* Main Controls Row */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -185,15 +308,15 @@ export function NotificationSettingsCard({ userId }: Props) {
           <span>{playingAudio ? 'Playing Chime…' : 'Test Sound'}</span>
         </button>
 
-        {/* Send Test Notification */}
+        {/* Send Local Test Notification */}
         <button
           onClick={handleTestNotification}
           disabled={testingNotification}
           className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-paper/80 hover:bg-white/10 hover:text-paper transition active:scale-95"
-          title="Send an immediate test alert to your device"
+          title="Send an immediate in-browser test alert"
         >
           <Send size={13} className="text-paper/50" />
-          <span>Test Notification</span>
+          <span>In-App Test</span>
         </button>
 
         {/* Simulate 7:30 AM Check */}
@@ -220,7 +343,7 @@ export function NotificationSettingsCard({ userId }: Props) {
       {testSent && (
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
           <Check size={14} />
-          <span>Test notification and chime dispatched! Check your desktop/phone banner.</span>
+          <span>Notification and celestial chime dispatched! Check your desktop/phone banner.</span>
         </div>
       )}
 
