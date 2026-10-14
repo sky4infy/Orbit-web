@@ -219,6 +219,17 @@ export interface EventLog {
   created_at: string;
 }
 
+export interface PushSubscriptionRow {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -234,6 +245,7 @@ export interface Database {
       event_log: { Row: EventLog; Insert: Partial<EventLog>; Update: Partial<EventLog> };
       exam: { Row: Exam; Insert: Partial<Exam>; Update: Partial<Exam> };
       exam_chapter: { Row: ExamChapter; Insert: Partial<ExamChapter>; Update: Partial<ExamChapter> };
+      push_subscription: { Row: PushSubscriptionRow; Insert: Partial<PushSubscriptionRow>; Update: Partial<PushSubscriptionRow> };
     };
     Views: {
       my_chapter_status: { Row: ChapterStatusRow };
