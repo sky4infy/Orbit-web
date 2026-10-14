@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/checkpoints?checkpoint=morning_730",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/checkpoints?checkpoint=morning_900",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/checkpoints?checkpoint=night_2200",
+      "schedule": "30 16 * * *"
+    }
+  ]
+}
