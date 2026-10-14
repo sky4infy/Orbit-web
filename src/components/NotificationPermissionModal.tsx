@@ -11,6 +11,7 @@ import {
   getNotificationPermission,
   requestNotificationPermission,
   dispatchOrbitNotification,
+  subscribeToWebPush,
 } from '@/lib/notificationService';
 
 export function NotificationPermissionModal() {
@@ -51,6 +52,8 @@ export function NotificationPermissionModal() {
       const granted = await requestNotificationPermission();
       if (granted) {
         setSuccess(true);
+        // Automatically establish Web Push subscription with server
+        subscribeToWebPush(userId ?? undefined).catch(() => {});
         // Play signature celestial chime
         playOrbitChime().catch(() => {});
         // Send instant verification test notification
