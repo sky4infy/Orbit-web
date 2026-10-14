@@ -33,6 +33,8 @@ self.addEventListener('push', (event) => {
     badge: '/favicon.svg',
     tag: data.tag || 'orbit-notification',
     sound: '/sounds/orbit-chime.wav',
+    vibrate: [200, 100, 200, 100, 250],
+    renotify: true,
     data: {
       url: data.url || '/planner',
     },
