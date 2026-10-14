@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { db } from '@/lib/db';
 import { getReflectionForDay } from '@/api/reflection';
 import { playOrbitChime } from '@/lib/orbitSound';
+import { supabase } from '@/lib/supabase/client';
 
 export interface NotificationStatus {
   supported: boolean;
@@ -12,6 +13,8 @@ export interface NotificationStatus {
   todayPlanned: boolean;
   todayReflected: boolean;
   taskCountToday: number;
+  pushSupported: boolean;
+  pushSubscribed: boolean;
 }
 
 const SETTINGS_KEY = 'orbit_notifications_enabled';
@@ -72,6 +75,185 @@ export async function requestNotificationPermission(): Promise<boolean> {
     return false;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Check if the browser supports standard Web Push via PushManager
+ */
+export function isPushSupported(): boolean {
+  return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+  if (!buffer) return '';
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+/**
+ * Checks whether this browser already holds an active PushSubscription
+ */
+export async function isWebPushSubscribed(): Promise<boolean> {
+  if (!isPushSupported()) return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return !!sub;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Subscribes this browser to Web Push using the VAPID Public Key
+ * and saves the subscription to Supabase.
+ */
+export async function subscribeToWebPush(userId?: string): Promise<{ success: boolean; error?: string }> {
+  if (!isPushSupported()) {
+    return { success: false, error: 'Push notifications are not supported on this browser.' };
+  }
+
+  const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!vapidKey) {
+    return { success: false, error: 'VAPID public key not configured in environment.' };
+  }
+
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      return { success: false, error: 'Notification permission was not granted by browser.' };
+    }
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as any,
+      });
+    }
+
+    const rawP256dh = sub.getKey('p256dh');
+    const rawAuth = sub.getKey('auth');
+    const p256dh = arrayBufferToBase64(rawP256dh);
+    const auth = arrayBufferToBase64(rawAuth);
+
+    const effectiveUid = resolveEffectiveUserId(userId);
+    if (effectiveUid) {
+      const { error: dbError } = await (supabase.from('push_subscription') as any).upsert(
+        {
+          user_id: effectiveUid,
+          endpoint: sub.endpoint,
+          p256dh,
+          auth,
+          user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'endpoint' }
+      );
+      if (dbError) {
+        console.warn('[Orbit WebPush] Failed to save subscription to Supabase:', dbError);
+      }
+    }
+
+    setOrbitNotificationsEnabled(true);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Orbit WebPush] Subscription error:', err);
+    return { success: false, error: err?.message || 'Failed to subscribe to Web Push' };
+  }
+}
+
+/**
+ * Unsubscribes from Web Push and removes subscription from Supabase
+ */
+export async function unsubscribeFromWebPush(userId?: string): Promise<boolean> {
+  if (!isPushSupported()) return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      const endpoint = sub.endpoint;
+      await sub.unsubscribe();
+      const effectiveUid = resolveEffectiveUserId(userId);
+      if (effectiveUid) {
+        await supabase.from('push_subscription').delete().eq('endpoint', endpoint);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('[Orbit WebPush] Unsubscribe failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Triggers a real server-side push notification to this device to verify background wakeup.
+ */
+export async function sendTestWebPush(userId?: string): Promise<{ success: boolean; error?: string }> {
+  if (!isPushSupported()) {
+    return { success: false, error: 'Web Push is not supported in this browser.' };
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+
+    if (!sub) {
+      const subResult = await subscribeToWebPush(userId);
+      if (!subResult.success) return subResult;
+      sub = await reg.pushManager.getSubscription();
+    }
+
+    if (!sub) {
+      return { success: false, error: 'Unable to establish push subscription.' };
+    }
+
+    const rawP256dh = sub.getKey('p256dh');
+    const rawAuth = sub.getKey('auth');
+
+    const res = await fetch('/api/notifications/test-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscription: {
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: arrayBufferToBase64(rawP256dh),
+            auth: arrayBufferToBase64(rawAuth),
+          },
+        },
+        title: 'Orbit · Background Push Verified 🪐',
+        body: 'Success! This notification arrived from the cloud server. It works even when Orbit is closed.',
+        url: '/planner',
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { success: false, error: data.error || `Server error ${res.status}` };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error triggering test push' };
   }
 }
 
@@ -354,6 +536,8 @@ export async function getOrbitNotificationStatus(userId?: string): Promise<Notif
   const supported = isNotificationSupported();
   const permission = getNotificationPermission();
   const enabled = areOrbitNotificationsEnabled();
+  const pushSupported = isPushSupported();
+  const pushSubscribed = await isWebPushSubscribed();
   const effectiveUid = resolveEffectiveUserId(userId);
   const { planned, count } = await checkTodayPlanned(effectiveUid ?? undefined);
   const reflected = effectiveUid ? await checkTodayReflected(effectiveUid) : false;
@@ -365,5 +549,7 @@ export async function getOrbitNotificationStatus(userId?: string): Promise<Notif
     todayPlanned: planned,
     todayReflected: reflected,
     taskCountToday: count,
+    pushSupported,
+    pushSubscribed,
   };
 }
